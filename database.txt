@@ -1,3 +1,4 @@
+
 -- Create a table for public profiles
 create table profiles (
   id uuid references auth.users not null primary key,
@@ -81,6 +82,21 @@ create policy "Reviews are viewable by everyone." on reviews
 create policy "Everyone can insert reviews." on reviews
   for insert with check (true);
 
--- NOTE: Pour le stockage, il faut créer un bucket nommé 'public-files' via l'interface Supabase ou SQL si les extensions le permettent.
--- insert into storage.buckets (id, name, public) values ('public-files', 'public-files', true);
--- Politiques de stockage nécessaires pour upload publique (ou authentifié seulement selon le besoin).
+-- CONFIGURATION DU STOCKAGE (STORAGE)
+-- Création du bucket 'public-files' s'il n'existe pas
+insert into storage.buckets (id, name, public) 
+values ('public-files', 'public-files', true)
+on conflict (id) do nothing;
+
+-- Politiques de stockage
+-- Lecture publique pour tout le monde (nécessaire pour afficher les images sur le site et PDF)
+create policy "Public Access" on storage.objects 
+  for select using (bucket_id = 'public-files');
+
+-- Upload public (ou restreint aux utilisateurs authentifiés si vous préférez)
+create policy "Public Upload" on storage.objects 
+  for insert with check (bucket_id = 'public-files');
+
+-- Update pour le propriétaire (optionnel)
+create policy "User Update" on storage.objects
+  for update using (bucket_id = 'public-files' and auth.uid() = owner);

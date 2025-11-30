@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { useApp, useAuth } from '../App';
@@ -10,7 +11,7 @@ import Footer from '../components/Footer';
 
 const LandingPage = () => {
   const { language } = useApp();
-  const { user, signInWithGoogle } = useAuth();
+  const { user } = useAuth();
   const t = TRANSLATIONS[language];
   const navigate = useNavigate();
 
@@ -31,30 +32,11 @@ const LandingPage = () => {
   };
 
   const handleStart = () => {
-    if (user) {
-      navigate('/dashboard');
-    } else {
-      // Trigger login modal logic implicitly by navigating to protected route or handle with context
-      // For now, if not logged in, we scroll to features or just try to nav
-      navigate('/dashboard'); 
-    }
+    navigate('/dashboard'); 
   };
 
   const scrollToTemplates = () => {
     document.getElementById('templates')?.scrollIntoView({ behavior: 'smooth' });
-  };
-
-  const handleTemplateClick = (templateName: string) => {
-      const templateId = templateName.toLowerCase();
-      if (user) {
-          navigate('/editor', { state: { template: templateId } });
-      } else {
-          // If not logged in, we can redirect to editor which will trigger login, 
-          // or show login modal. The ProtectedRoute in App.tsx handles this.
-          // Passing state so after login they land with template might require more logic,
-          // but for now let's push them to editor.
-          navigate('/editor', { state: { template: templateId } });
-      }
   };
 
   const handleImageUpload = async (file: File) => {
@@ -239,20 +221,39 @@ const LandingPage = () => {
                 <TemplatePreviewCard 
                     name="Modern" 
                     color="bg-slate-800" 
-                    onClick={() => handleTemplateClick('modern')} 
                 />
                 <TemplatePreviewCard 
                     name="Classic" 
                     color="bg-white border-2 border-slate-200 text-slate-900" 
                     isLight 
-                    onClick={() => handleTemplateClick('classic')} 
                 />
                 <TemplatePreviewCard 
                     name="Minimalist" 
                     color="bg-indigo-50" 
                     isLight 
-                    onClick={() => handleTemplateClick('minimalist')} 
                 />
+                <TemplatePreviewCard 
+                    name="Executive" 
+                    color="bg-slate-900 border-t-8 border-gold-500" 
+                />
+                <TemplatePreviewCard 
+                    name="Creative" 
+                    color="bg-pink-50" 
+                    isLight
+                />
+                <TemplatePreviewCard 
+                    name="Tech" 
+                    color="bg-gray-900 font-mono" 
+                />
+            </div>
+            
+            <div className="mt-12 text-center">
+                 <button 
+                    onClick={handleStart}
+                    className="px-8 py-3 bg-primary-600 hover:bg-primary-700 text-white rounded-full font-bold shadow-lg transition-transform hover:scale-105"
+                 >
+                     Créer mon CV maintenant
+                 </button>
             </div>
           </div>
       </section>
@@ -275,7 +276,6 @@ const LandingPage = () => {
                       />
                   )) : (
                       <>
-                        {/* Fallback if DB empty */}
                         <TestimonialCard 
                             quote="J'ai décroché mon entretien grâce à ProCV !"
                             author="Alex M."
@@ -436,23 +436,6 @@ const PhoneMockup = () => {
                                 <div className="h-1.5 w-4/6 bg-slate-100 dark:bg-slate-500 rounded"></div>
                              </div>
                          </motion.div>
-
-                         {/* AI Chat Bubble Simulation */}
-                         <motion.div 
-                            initial={{ scale: 0 }}
-                            animate={{ scale: 1 }}
-                            transition={{ delay: 1, duration: 0.5 }}
-                            className="absolute bottom-12 right-4 w-48 bg-gradient-to-br from-indigo-500 to-purple-600 p-3 rounded-2xl rounded-tr-none shadow-lg text-white"
-                         >
-                            <div className="flex gap-2 items-center mb-1">
-                                <Wand2 className="w-3 h-3" />
-                                <span className="text-[10px] font-bold">AI Assistant</span>
-                            </div>
-                            <div className="space-y-1.5">
-                                <div className="h-1.5 w-full bg-white/30 rounded"></div>
-                                <div className="h-1.5 w-3/4 bg-white/30 rounded"></div>
-                            </div>
-                         </motion.div>
                     </div>
 
                     {/* Bottom Nav */}
@@ -499,8 +482,8 @@ const StepCard = ({ number, icon, title, desc }: any) => (
     </motion.div>
 );
 
-const TemplatePreviewCard = ({ name, color, isLight, onClick }: any) => (
-    <div className="group cursor-pointer" onClick={onClick}>
+const TemplatePreviewCard = ({ name, color, isLight }: any) => (
+    <div className="group">
         <div className={`h-80 w-full rounded-2xl shadow-xl overflow-hidden relative ${color} transition-all duration-300 group-hover:shadow-2xl group-hover:-translate-y-2`}>
             {/* Fake Content */}
             <div className="p-6 h-full flex flex-col">
@@ -519,11 +502,9 @@ const TemplatePreviewCard = ({ name, color, isLight, onClick }: any) => (
                 </div>
             </div>
             
-            <div className="absolute inset-0 bg-black/50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                <span className="bg-white text-slate-900 px-4 py-2 rounded-full font-bold">Choisir</span>
-            </div>
+             <div className="absolute inset-0 bg-black/10 opacity-0 group-hover:opacity-100 transition-opacity"></div>
         </div>
-        <h3 className="text-center mt-4 font-semibold text-lg">{name}</h3>
+        <h3 className="text-center mt-4 font-semibold text-lg text-slate-700 dark:text-slate-300">{name}</h3>
     </div>
 );
 

@@ -10,6 +10,7 @@ export const INITIAL_RESUME_STATE: ResumeData = {
     email: '',
     phone: '',
     address: '',
+    photoUrl: '',
     jobTitle: '',
     summary: '',
     linkedin: '',
@@ -116,20 +117,25 @@ export const TRANSLATIONS = {
         save: 'Sauvegarder',
         exportPDF: 'PDF',
         exportDOCX: 'Word',
-        back: 'Retour'
+        back: 'Retour',
+        changeTemplate: 'Changer de modèle'
       },
       labels: {
         fullName: 'Nom complet',
         jobTitle: 'Titre du poste',
         summary: 'Résumé professionnel',
         current: 'Poste actuel',
-        description: 'Description'
+        description: 'Description',
+        photo: 'Photo de profil'
       },
       aiModal: {
         title: 'Générer le contenu via IA',
         placeholder: 'Collez la description du poste ici...',
         processing: 'Génération en cours...',
         button: 'Générer le CV'
+      },
+      templateModal: {
+        title: 'Choisir un modèle'
       }
     }
   },
@@ -227,20 +233,25 @@ export const TRANSLATIONS = {
         save: 'Save',
         exportPDF: 'PDF',
         exportDOCX: 'Word',
-        back: 'Back'
+        back: 'Back',
+        changeTemplate: 'Change Template'
       },
       labels: {
         fullName: 'Full Name',
         jobTitle: 'Job Title',
         summary: 'Professional Summary',
         current: 'Current Position',
-        description: 'Description'
+        description: 'Description',
+        photo: 'Profile Photo'
       },
       aiModal: {
         title: 'Generate Content via AI',
         placeholder: 'Paste job description here...',
         processing: 'Generating...',
         button: 'Generate Resume'
+      },
+      templateModal: {
+        title: 'Choose a Template'
       }
     }
   }

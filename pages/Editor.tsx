@@ -4,11 +4,11 @@ import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { supabase } from '../services/supabaseClient';
 import { generateResumeFromJobDescription } from '../services/geminiService';
 import { useAuth, useApp } from '../App';
-import { ResumeData, ExperienceItem, EducationItem, TemplateType } from '../types';
+import { ResumeData, TemplateType } from '../types';
 import { INITIAL_RESUME_STATE, TRANSLATIONS } from '../constants';
 import ResumePreview from '../components/ResumePreview';
 import { 
-  Save, ArrowLeft, Wand2, Download, Eye, Layout, Plus, Trash, ChevronDown, ChevronUp, User 
+  Save, ArrowLeft, Wand2, Download, Eye, Layout, Plus, Trash, ChevronDown, ChevronUp, User, Upload, Image as ImageIcon, Check
 } from 'lucide-react';
 import html2canvas from 'html2canvas';
 import jsPDF from 'jspdf';
@@ -29,6 +29,7 @@ const Editor = () => {
   const [aiLoading, setAiLoading] = useState(false);
   const [activeTab, setActiveTab] = useState('personal');
   const [showAiModal, setShowAiModal] = useState(false);
+  const [showTemplateModal, setShowTemplateModal] = useState(false);
   
   // AI Generation State
   const [jobDescription, setJobDescription] = useState('');
@@ -48,7 +49,6 @@ const Editor = () => {
     if (id) {
       loadResume(id);
     } else if (user?.user_metadata?.full_name) {
-        // Pre-fill name from auth if available
         setResumeData(prev => ({
             ...prev,
             personalInfo: { ...prev.personalInfo, fullName: user.user_metadata.full_name }
@@ -106,7 +106,6 @@ const Editor = () => {
     }
     setAiLoading(true);
     try {
-      // We pass the collected candidate name to the service
       const newResume = await generateResumeFromJobDescription(jobDescription, candidateName, resumeData, language);
       if (newResume) {
         setResumeData(prev => ({ ...prev, ...newResume }));
@@ -119,41 +118,104 @@ const Editor = () => {
     }
   };
 
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!e.target.files || !e.target.files[0]) return;
+    const file = e.target.files[0];
+    const fileExt = file.name.split('.').pop();
+    const fileName = `${Math.random()}.${fileExt}`;
+    const filePath = `resume-photos/${fileName}`;
+
+    try {
+        setLoading(true);
+        const { error: uploadError } = await supabase.storage
+            .from('public-files')
+            .upload(filePath, file);
+
+        if (uploadError) throw uploadError;
+
+        const { data } = supabase.storage.from('public-files').getPublicUrl(filePath);
+        updatePersonalInfo('photoUrl', data.publicUrl);
+    } catch (error) {
+        console.error('Error uploading image:', error);
+        alert('Error uploading image');
+    } finally {
+        setLoading(false);
+    }
+  };
+
   // --- Export Logic ---
   
   const exportPDF = async () => {
     if (!previewRef.current) return;
-    const element = previewRef.current;
     
+    // STRATEGY: Clone and Isolate
+    // We clone the preview, place it in a container with fixed A4 dimensions,
+    // and remove any scaling transforms. This ensures html2canvas sees exactly what it should.
+    
+    const element = previewRef.current;
+    const clone = element.cloneNode(true) as HTMLElement;
+    
+    // Create container
+    const container = document.createElement('div');
+    container.style.position = 'fixed';
+    container.style.top = '-10000px';
+    container.style.left = '-10000px';
+    container.style.width = '210mm'; // Fixed A4 width
+    container.style.minHeight = '297mm'; // Minimum A4 height
+    container.style.zIndex = '-1000';
+    container.style.background = '#ffffff';
+    
+    // Ensure the clone has no transform and takes full width
+    clone.style.transform = 'none';
+    clone.style.width = '100%';
+    clone.style.height = 'auto';
+    clone.style.boxShadow = 'none';
+    clone.style.margin = '0';
+    
+    container.appendChild(clone);
+    document.body.appendChild(container);
+
     try {
         setLoading(true);
-        // Optimization options for PDF
-        const canvas = await html2canvas(element, { 
-          scale: 2, // Slightly lower scale for size optimization (was 2, can go to 1.5 if still large)
-          useCORS: true,
+        
+        const canvas = await html2canvas(container, { 
+          scale: 2, // High resolution (2x)
+          useCORS: true, // Allow loading remote images (photoUrl)
           logging: false,
           allowTaint: true,
-          backgroundColor: '#ffffff', // Force white background to prevent transparency overlap issues
+          backgroundColor: '#ffffff',
+          width: container.offsetWidth, // Force canvas width
+          windowWidth: container.offsetWidth
         });
         
-        // Use JPEG instead of PNG for smaller file size
         const imgData = canvas.toDataURL('image/jpeg', 0.95);
         
-        const pdf = new jsPDF({
-          orientation: 'portrait',
-          unit: 'mm',
-          format: 'a4'
-        });
+        // Calculate PDF dimensions based on the canvas aspect ratio
+        const imgWidth = 210; // A4 width mm
+        const pageHeight = 297; // A4 height mm
+        const imgHeight = (canvas.height * imgWidth) / canvas.width;
         
-        const pdfWidth = pdf.internal.pageSize.getWidth();
-        const pdfHeight = pdf.internal.pageSize.getHeight();
+        const pdf = new jsPDF('p', 'mm', 'a4');
+        let heightLeft = imgHeight;
+        let position = 0;
+
+        pdf.addImage(imgData, 'JPEG', 0, position, imgWidth, imgHeight);
+        heightLeft -= pageHeight;
+
+        // Handle multi-page PDFs
+        while (heightLeft >= 0) {
+          position = heightLeft - imgHeight;
+          pdf.addPage();
+          pdf.addImage(imgData, 'JPEG', 0, position, imgWidth, imgHeight);
+          heightLeft -= pageHeight;
+        }
         
-        pdf.addImage(imgData, 'JPEG', 0, 0, pdfWidth, pdfHeight);
         pdf.save(`${title.replace(/\s+/g, '_')}.pdf`);
     } catch (err) {
         console.error("Export failed", err);
         alert("Export failed. Please try again.");
     } finally {
+        document.body.removeChild(container);
         setLoading(false);
     }
   };
@@ -235,12 +297,6 @@ const Editor = () => {
     }));
   };
 
-  const updateSkill = (idx: number, value: string) => {
-    const newSkills = [...resumeData.skills];
-    newSkills[idx] = value;
-    setResumeData(prev => ({ ...prev, skills: newSkills }));
-  };
-
   return (
     <div className="flex flex-col h-screen bg-slate-100 dark:bg-slate-900 overflow-hidden">
       {/* Top Bar */}
@@ -257,6 +313,14 @@ const Editor = () => {
         </div>
         
         <div className="flex items-center gap-2">
+          <button 
+            onClick={() => setShowTemplateModal(true)}
+            className="flex items-center gap-2 px-3 py-1.5 bg-slate-100 text-slate-700 dark:bg-slate-700 dark:text-slate-300 rounded-lg text-xs sm:text-sm font-medium hover:bg-slate-200 transition-colors"
+          >
+            <Layout className="w-4 h-4" />
+            <span className="hidden sm:inline">{t.buttons.changeTemplate}</span>
+          </button>
+
           <button 
             onClick={() => setShowAiModal(true)}
             className="flex items-center gap-2 px-3 py-1.5 bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300 rounded-lg text-xs sm:text-sm font-medium hover:bg-indigo-200 transition-colors"
@@ -304,6 +368,24 @@ const Editor = () => {
 
             {activeTab === 'personal' && (
                 <div className="space-y-4 animate-in fade-in slide-in-from-left-4 duration-300">
+                    <div className="flex items-center gap-4 mb-4">
+                        <div className="w-20 h-20 rounded-full bg-slate-100 dark:bg-slate-700 overflow-hidden flex items-center justify-center border border-slate-200 dark:border-slate-600 relative group">
+                            {resumeData.personalInfo.photoUrl ? (
+                                <img src={resumeData.personalInfo.photoUrl} alt="Profile" className="w-full h-full object-cover" />
+                            ) : (
+                                <User className="w-8 h-8 text-slate-400" />
+                            )}
+                            <label className="absolute inset-0 bg-black/50 flex items-center justify-center opacity-0 group-hover:opacity-100 cursor-pointer transition-opacity text-white">
+                                <Upload className="w-6 h-6" />
+                                <input type="file" accept="image/*" className="hidden" onChange={handleImageUpload} />
+                            </label>
+                        </div>
+                        <div className="flex-1">
+                             <label className="block text-sm font-medium mb-1">{t.labels.photo}</label>
+                             <div className="text-xs text-slate-500">Formats: JPG, PNG. Max 2MB.</div>
+                        </div>
+                    </div>
+
                     <InputField label={t.labels.fullName} value={resumeData.personalInfo.fullName} onChange={v => updatePersonalInfo('fullName', v)} />
                     <InputField label={t.labels.jobTitle} value={resumeData.personalInfo.jobTitle} onChange={v => updatePersonalInfo('jobTitle', v)} />
                     <div className="grid grid-cols-2 gap-4">
@@ -421,19 +503,7 @@ const Editor = () => {
         </div>
 
         {/* Preview Panel (Right) */}
-        <div className="w-full md:w-1/2 lg:w-7/12 bg-slate-200 dark:bg-slate-950 p-4 md:p-8 overflow-y-auto flex flex-col items-center h-1/2 md:h-full">
-             <div className="mb-4 flex gap-2 p-1 bg-white dark:bg-slate-800 rounded-lg shadow-sm">
-                {(['modern', 'classic', 'minimalist'] as TemplateType[]).map(t => (
-                    <button
-                        key={t}
-                        onClick={() => setTemplate(t)}
-                        className={`px-3 py-1 rounded text-sm capitalize ${template === t ? 'bg-primary-600 text-white' : 'hover:bg-slate-100 dark:hover:bg-slate-700'}`}
-                    >
-                        {t}
-                    </button>
-                ))}
-             </div>
-            
+        <div className="w-full md:w-1/2 lg:w-7/12 bg-slate-200 dark:bg-slate-950 p-4 md:p-8 overflow-y-auto flex flex-col items-center h-1/2 md:h-full relative">
              <div className="shadow-2xl origin-top transition-transform duration-300 scale-50 md:scale-75 lg:scale-[0.85] xl:scale-90">
                 <ResumePreview ref={previewRef} data={resumeData} template={template} />
              </div>
@@ -450,7 +520,6 @@ const Editor = () => {
             </h3>
             
             <div className="space-y-4 mb-4">
-                 {/* Name Field - Mandatory */}
                  <div className="space-y-1">
                     <label className="text-sm font-medium text-slate-700 dark:text-slate-300">
                         Nom complet <span className="text-red-500">*</span>
@@ -465,10 +534,8 @@ const Editor = () => {
                             className="w-full pl-10 pr-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-slate-50 dark:bg-slate-900 focus:ring-2 focus:ring-primary-500 outline-none"
                         />
                     </div>
-                    <p className="text-xs text-slate-500 dark:text-slate-400">Le reste des informations (email, téléphone, etc.) pourra être ajouté plus tard.</p>
                  </div>
 
-                 {/* Job Description - Mandatory */}
                  <div className="space-y-1">
                     <label className="text-sm font-medium text-slate-700 dark:text-slate-300">
                         Offre d'emploi <span className="text-red-500">*</span>
@@ -500,6 +567,55 @@ const Editor = () => {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Template Selection Modal */}
+      {showTemplateModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+              <div className="bg-white dark:bg-slate-800 rounded-xl shadow-2xl w-full max-w-4xl p-6 h-[80vh] flex flex-col">
+                  <div className="flex justify-between items-center mb-6">
+                      <h3 className="text-xl font-bold">{t.templateModal.title}</h3>
+                      <button onClick={() => setShowTemplateModal(false)}><span className="text-2xl">&times;</span></button>
+                  </div>
+                  
+                  <div className="grid grid-cols-2 md:grid-cols-3 gap-6 overflow-y-auto p-2">
+                       {/* Template Cards */}
+                       {[
+                           {id: 'modern', name: 'Modern', color: 'bg-slate-800'},
+                           {id: 'classic', name: 'Classic', color: 'bg-white border'},
+                           {id: 'minimalist', name: 'Minimalist', color: 'bg-indigo-50'},
+                           {id: 'executive', name: 'Executive', color: 'bg-slate-900 border-t-4 border-yellow-500'},
+                           {id: 'creative', name: 'Creative', color: 'bg-pink-50'},
+                           {id: 'tech', name: 'Tech', color: 'bg-gray-900 font-mono'},
+                           {id: 'compact', name: 'Compact', color: 'bg-blue-50'},
+                           {id: 'timeline', name: 'Timeline', color: 'bg-white border-l-4 border-blue-500'},
+                           {id: 'leftborder', name: 'Left Border', color: 'bg-white border-l-8 border-slate-800'},
+                       ].map(tmp => (
+                           <div 
+                                key={tmp.id} 
+                                onClick={() => { setTemplate(tmp.id as TemplateType); setShowTemplateModal(false); }}
+                                className={`cursor-pointer group relative rounded-lg overflow-hidden border-2 transition-all ${template === tmp.id ? 'border-primary-500 ring-2 ring-primary-200' : 'border-transparent hover:border-slate-300'}`}
+                           >
+                               <div className={`aspect-[210/297] ${tmp.color} flex flex-col p-4 shadow-sm`}>
+                                   {/* Mini preview sketch */}
+                                   <div className="w-1/2 h-4 bg-current opacity-20 mb-2 rounded"></div>
+                                   <div className="w-full h-1 bg-current opacity-10 mb-1 rounded"></div>
+                                   <div className="w-full h-1 bg-current opacity-10 mb-4 rounded"></div>
+                                   <div className="flex-1 w-full bg-current opacity-5 rounded"></div>
+                               </div>
+                               <div className="absolute inset-x-0 bottom-0 bg-white/90 dark:bg-slate-900/90 p-3 text-center font-medium translate-y-full group-hover:translate-y-0 transition-transform">
+                                   {tmp.name}
+                               </div>
+                               {template === tmp.id && (
+                                   <div className="absolute top-2 right-2 bg-primary-600 text-white p-1 rounded-full shadow-lg">
+                                       <Check className="w-4 h-4" />
+                                   </div>
+                               )}
+                           </div>
+                       ))}
+                  </div>
+              </div>
+          </div>
       )}
     </div>
   );

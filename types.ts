@@ -6,6 +6,7 @@ export interface ResumeData {
     email: string;
     phone: string;
     address: string;
+    photoUrl?: string; // Added photo URL
     website?: string;
     linkedin?: string;
     jobTitle: string;
@@ -35,9 +36,10 @@ export interface EducationItem {
   startDate: string;
   endDate: string;
   current: boolean;
+  description?: string;
 }
 
-export type TemplateType = 'modern' | 'classic' | 'minimalist';
+export type TemplateType = 'modern' | 'classic' | 'minimalist' | 'executive' | 'creative' | 'tech' | 'compact' | 'timeline' | 'leftborder';
 
 export interface UserProfile {
   id: string;
