@@ -1,0 +1,86 @@
+-- Create a table for public profiles
+create table profiles (
+  id uuid references auth.users not null primary key,
+  email text,
+  full_name text,
+  avatar_url text,
+  updated_at timestamp with time zone
+);
+
+-- Set up Row Level Security (RLS)
+alter table profiles enable row level security;
+
+create policy "Public profiles are viewable by everyone." on profiles
+  for select using (true);
+
+create policy "Users can insert their own profile." on profiles
+  for insert with check (auth.uid() = id);
+
+create policy "Users can update own profile." on profiles
+  for update using (auth.uid() = id);
+
+-- Create a table for resumes
+create table resumes (
+  id uuid default uuid_generate_v4() primary key,
+  user_id uuid references auth.users not null,
+  title text default 'Mon CV',
+  content jsonb default '{}'::jsonb,
+  template_id text default 'modern',
+  created_at timestamp with time zone default timezone('utc'::text, now()) not null,
+  updated_at timestamp with time zone default timezone('utc'::text, now()) not null
+);
+
+-- RLS for resumes
+alter table resumes enable row level security;
+
+create policy "Users can view own resumes." on resumes
+  for select using (auth.uid() = user_id);
+
+create policy "Users can insert own resumes." on resumes
+  for insert with check (auth.uid() = user_id);
+
+create policy "Users can update own resumes." on resumes
+  for update using (auth.uid() = user_id);
+
+create policy "Users can delete own resumes." on resumes
+  for delete using (auth.uid() = user_id);
+
+-- Trigger to handle new user signup
+create or replace function public.handle_new_user()
+returns trigger as $$
+begin
+  insert into public.profiles (id, email, full_name, avatar_url)
+  values (new.id, new.email, new.raw_user_meta_data->>'full_name', new.raw_user_meta_data->>'avatar_url');
+  return new;
+end;
+$$ language plpgsql security definer;
+
+create trigger on_auth_user_created
+  after insert on auth.users
+  for each row execute procedure public.handle_new_user();
+
+-- --- NOUVEAU : GESTION DES AVIS ET STOCKAGE ---
+
+-- Création de la table des avis
+create table reviews (
+  id uuid default uuid_generate_v4() primary key,
+  name text not null,
+  role text,
+  content text not null,
+  rating integer check (rating >= 1 and rating <= 5),
+  avatar_url text,
+  created_at timestamp with time zone default timezone('utc'::text, now()) not null
+);
+
+-- Sécurité pour les avis (Lecture publique, Insertion pour tous)
+alter table reviews enable row level security;
+
+create policy "Reviews are viewable by everyone." on reviews
+  for select using (true);
+
+create policy "Everyone can insert reviews." on reviews
+  for insert with check (true);
+
+-- NOTE: Pour le stockage, il faut créer un bucket nommé 'public-files' via l'interface Supabase ou SQL si les extensions le permettent.
+-- insert into storage.buckets (id, name, public) values ('public-files', 'public-files', true);
+-- Politiques de stockage nécessaires pour upload publique (ou authentifié seulement selon le besoin).

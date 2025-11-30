@@ -1,0 +1,5 @@
+{
+  "name": "ProCV",
+  "description": "Générateur de CV intelligent alimenté par IA avec authentification Supabase et export PDF/DOCX.",
+  "requestFramePermissions": []
+}
