@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { useApp, useAuth } from '../App';
@@ -32,7 +31,13 @@ const LandingPage = () => {
   };
 
   const handleStart = () => {
-    navigate('/dashboard'); 
+    if (user) {
+        navigate('/dashboard'); 
+    } else {
+        // Dispatch custom event to open auth modal in signup mode
+        const event = new CustomEvent('open-auth-modal', { detail: { mode: 'signup' } });
+        window.dispatchEvent(event);
+    }
   };
 
   const scrollToTemplates = () => {

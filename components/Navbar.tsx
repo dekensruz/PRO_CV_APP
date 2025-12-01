@@ -1,5 +1,4 @@
-
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth, useApp } from '../App';
 import { TRANSLATIONS } from '../constants';
@@ -99,6 +98,19 @@ const Navbar = () => {
     setIsSignUp(false);
     setShowPassword(false);
   };
+
+  // Listen for event to open auth modal from other components (like Landing Page)
+  useEffect(() => {
+    const handleOpenAuth = (e: any) => {
+        resetForm();
+        if (e.detail?.mode === 'signup') {
+            setIsSignUp(true);
+        }
+        setShowLoginModal(true);
+    };
+    window.addEventListener('open-auth-modal', handleOpenAuth);
+    return () => window.removeEventListener('open-auth-modal', handleOpenAuth);
+  }, []);
 
   return (
     <>

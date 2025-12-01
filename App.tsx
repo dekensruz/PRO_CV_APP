@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useEffect, useState, ReactNode } from 'react';
-import { HashRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
+import { HashRouter, Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { supabase } from './services/supabaseClient';
 import { User } from '@supabase/supabase-js';
 import { Language } from './types';
@@ -143,7 +143,17 @@ const ProtectedRoute = ({ children }: { children?: React.ReactNode }) => {
 
 const AppContent = () => {
   const location = useLocation();
+  const navigate = useNavigate();
+  const { user, loading } = useAuth();
   const isEditor = location.pathname.includes('/editor');
+
+  // Redirection automatique si l'utilisateur est connecté et sur la page d'accueil
+  // Cela gère le retour de l'authentification Google
+  useEffect(() => {
+    if (!loading && user && location.pathname === '/') {
+      navigate('/dashboard');
+    }
+  }, [user, loading, location.pathname, navigate]);
 
   return (
     <div className="min-h-screen flex flex-col">
