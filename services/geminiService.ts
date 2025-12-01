@@ -3,16 +3,19 @@ import { ResumeData } from "../types";
 
 // Helper to safely get the API key
 const getApiKey = () => {
-  // Check process.env (standard)
-  if (typeof process !== 'undefined' && process.env && process.env.API_KEY) {
-    return process.env.API_KEY;
-  }
-  // Fallback checking import.meta.env if using Vite (and user named it VITE_API_KEY)
+  // 1. Check Vite Environment Variable (Recommended for Vercel)
   // @ts-ignore
   if (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_API_KEY) {
     // @ts-ignore
     return import.meta.env.VITE_API_KEY;
   }
+  
+  // 2. Check standard process.env (mapped in vite.config.ts)
+  if (typeof process !== 'undefined' && process.env) {
+    if (process.env.API_KEY) return process.env.API_KEY;
+    if (process.env.VITE_API_KEY) return process.env.VITE_API_KEY;
+  }
+
   return '';
 };
 
@@ -25,8 +28,8 @@ export const generateResumeFromJobDescription = async (
   try {
     const apiKey = getApiKey();
     if (!apiKey) {
-      console.error("API Key is missing. Please check your environment variables (API_KEY or VITE_API_KEY).");
-      alert("Clé API manquante. Veuillez configurer la variable d'environnement API_KEY sur Vercel.");
+      console.error("API Key is missing. Please check your environment variables (VITE_API_KEY or API_KEY).");
+      alert("Clé API manquante. Sur Vercel, ajoutez la variable d'environnement 'VITE_API_KEY'.");
       return null;
     }
 

@@ -1,46 +1,82 @@
-# ProCV
+# ProCV - Générateur de CV Intelligent par IA
 
-ProCV est une application de génération de CV intelligente utilisant l'IA pour adapter votre CV aux offres d'emploi.
+Une application web complète pour créer, générer et gérer des CVs professionnels, alimentée par l'intelligence artificielle de Google Gemini et le backend Supabase.
 
-## Fonctionnalités
+## 🚀 Fonctionnalités Principales
 
-- **IA Générative** : Créez ou optimisez un CV à partir d'une description de poste.
-- **Éditeur Complet** : Édition manuelle facile avec prévisualisation en temps réel.
-- **Templates** : Plusieurs modèles modernes et classiques (12+ designs).
-- **Export** : PDF haute qualité et format Word (DOCX).
-- **Bilingue** : Français (défaut) et Anglais.
-- **Thèmes** : Mode Clair (défaut) et Sombre.
-- **Avis** : Système d'avis utilisateurs avec upload d'images.
-- **Authentification** : Gestion utilisateurs via Supabase (Email/Mot de passe).
+### 🧠 Intelligence Artificielle (Gemini 2.5)
+- **Génération Contextuelle** : Crée un CV complet à partir d'une simple description de poste.
+- **Optimisation** : Adapte votre expérience existante aux mots-clés de l'offre.
+- **Mode Bilingue** : Génération en Français ou Anglais.
 
-## Installation de la Base de Données
+### 🎨 Éditeur & Design
+- **12+ Modèles Exclusifs** : 
+  - *Classiques* : Modern, Classic, Minimalist.
+  - *Pro* : Executive, Compact, Timeline.
+  - *Créatifs* : Creative, Left Border, Double.
+  - *Spéciaux* : Tech (Style code), Glitch (Cyberpunk), Swiss (Typographie suisse).
+- **Éditeur Responsive** : 
+  - **Desktop** : Vue partagée (Éditeur à gauche, Aperçu à droite).
+  - **Mobile** : Système d'onglets intelligent avec bouton flottant pour basculer entre édition et aperçu.
+- **Upload Photo** : Gestion d'image de profil intégrée avec stockage Cloud.
 
-1. Allez sur votre tableau de bord Supabase.
-2. Ouvrez l'éditeur SQL.
-3. Copiez et collez le contenu du fichier `database.txt`.
-4. Exécutez le script.
+### 💾 Gestion des Données
+- **Sauvegarde Automatique** : Système hybride (Local Storage + Base de données) pour ne jamais perdre vos modifications.
+- **Export PDF Pro** : Moteur de rendu optimisé (A4 strict, haute résolution, pas de coupure de texte).
+- **Export Word** : Génération de fichiers `.docx` éditables.
+- **Tableau de Bord** : Gestion de multiples versions de CV.
 
-## Configuration du Stockage (Storage)
+### 🔐 Authentification & Social
+- Connexion Email/Mot de passe sécurisée.
+- Profil utilisateur personnalisable.
+- Système d'avis clients avec notation et upload d'avatar.
 
-1. Allez dans l'onglet **Storage** de Supabase.
-2. Créez un nouveau Bucket public nommé `public-files`.
-3. Ajoutez des politiques (Policies) pour permettre la lecture (SELECT) publique et l'upload (INSERT) pour tous (ou utilisateurs authentifiés).
+## 🛠 Tech Stack
 
-## Déploiement sur Vercel (Variables d'environnement)
+- **Frontend** : React 19, TypeScript, Tailwind CSS.
+- **Animations** : Framer Motion.
+- **Backend** : Supabase (Auth, Database, Storage, Realtime).
+- **AI** : Google GenAI SDK.
+- **Outils** : Vite, Lucide React, html2canvas, jsPDF, docx.
 
-Pour que l'IA fonctionne en production :
+## ⚙️ Guide d'Installation
 
-1. Déployez votre projet sur Vercel.
-2. Allez dans le tableau de bord de votre projet Vercel -> **Settings** -> **Environment Variables**.
-3. Ajoutez la variable suivante :
-   - **Key** : `API_KEY` (ou `VITE_API_KEY` si vous utilisez Vite)
-   - **Value** : Votre clé API Google Gemini.
+### 1. Configuration Supabase
 
-Si vous avez une page blanche au démarrage, assurez-vous que les variables sont bien définies. L'application contient un correctif automatique (`window.process`) pour éviter les plantages si les variables ne sont pas injectées correctement lors du build.
+L'application nécessite une base de données PostgreSQL hébergée sur Supabase.
 
-## Configuration Locale
+1. Créez un projet sur [Supabase](https://supabase.com).
+2. Allez dans la section **SQL Editor**.
+3. Copiez l'intégralité du contenu du fichier `database.txt` fourni dans ce projet.
+4. Exécutez le script. Cela va :
+   - Créer les tables (`profiles`, `resumes`, `reviews`).
+   - Configurer la sécurité (RLS Policies).
+   - Créer les Triggers pour la mise à jour automatique des dates (`updated_at`).
+   - Créer le Bucket de stockage `public-files` pour les images.
 
-Créez un fichier `.env` à la racine :
+### 2. Variables d'Environnement
+
+Pour que l'IA fonctionne, vous devez configurer la clé API Google Gemini.
+
+**En Local (.env) :**
+```bash
+API_KEY=votre_cle_api_gemini
 ```
-API_KEY=votre_cle_api_ici
-```
+
+**Sur Vercel (Production) :**
+Allez dans **Settings > Environment Variables** et ajoutez :
+- **Name**: `API_KEY`
+- **Value**: `votre_cle_api_gemini_ici`
+
+> **Note** : Les URLs et Clés Supabase sont actuellement définies dans `constants.ts` pour la démonstration. Pour une production stricte, déplacez-les également dans les variables d'environnement.
+
+## 🐛 Dépannage Courant
+
+- **Page Blanche sur Vercel** : L'application inclut un polyfill (`window.process`) dans `index.html` pour éviter les crashs si les variables d'environnement ne sont pas accessibles immédiatement.
+- **Modifications perdues** : Assurez-vous d'avoir exécuté la partie du script SQL concernant les `Triggers` (`handle_updated_at`).
+- **Export PDF décalé** : L'export utilise un conteneur isolé. Si vous avez des soucis, vérifiez que vous n'utilisez pas d'extensions de navigateur qui modifient le CSS (Dark Reader, etc.).
+
+## 👤 Auteur
+
+Développé par **Dekens Ruzuba**.
+[Voir le Portfolio](http://portfoliodek.netlify.app/)
