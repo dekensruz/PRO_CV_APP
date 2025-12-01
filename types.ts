@@ -1,4 +1,5 @@
 
+
 export interface ResumeData {
   id?: string;
   personalInfo: {
@@ -39,7 +40,7 @@ export interface EducationItem {
   description?: string;
 }
 
-export type TemplateType = 'modern' | 'classic' | 'minimalist' | 'executive' | 'creative' | 'tech' | 'compact' | 'timeline' | 'leftborder';
+export type TemplateType = 'modern' | 'classic' | 'minimalist' | 'executive' | 'creative' | 'tech' | 'compact' | 'timeline' | 'leftborder' | 'glitch' | 'swiss' | 'double';
 
 export interface UserProfile {
   id: string;

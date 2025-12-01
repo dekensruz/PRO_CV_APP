@@ -7,6 +7,11 @@
     <title>ProCV - Générateur de CV Intelligent</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
+      // POLYFILL POUR VERCEL / NAVIGATEUR
+      // Empêche le crash "process is not defined" si le bundler ne le remplace pas
+      window.process = window.process || { env: {} };
+    </script>
+    <script>
       tailwind.config = {
         darkMode: 'class',
         theme: {

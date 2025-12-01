@@ -1,9 +1,20 @@
-
 import { GoogleGenAI, Type } from "@google/genai";
 import { ResumeData } from "../types";
 
-// Note: Ensure process.env.API_KEY is available in your environment variables
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || '' });
+// Helper to safely get the API key
+const getApiKey = () => {
+  // Check process.env (standard)
+  if (typeof process !== 'undefined' && process.env && process.env.API_KEY) {
+    return process.env.API_KEY;
+  }
+  // Fallback checking import.meta.env if using Vite (and user named it VITE_API_KEY)
+  // @ts-ignore
+  if (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_API_KEY) {
+    // @ts-ignore
+    return import.meta.env.VITE_API_KEY;
+  }
+  return '';
+};
 
 export const generateResumeFromJobDescription = async (
   jobDescription: string,
@@ -12,8 +23,20 @@ export const generateResumeFromJobDescription = async (
   language: 'fr' | 'en' = 'fr'
 ): Promise<ResumeData | null> => {
   try {
+    const apiKey = getApiKey();
+    if (!apiKey) {
+      console.error("API Key is missing. Please check your environment variables (API_KEY or VITE_API_KEY).");
+      alert("Clé API manquante. Veuillez configurer la variable d'environnement API_KEY sur Vercel.");
+      return null;
+    }
+
+    // Initialize AI instance here, not globally, to prevent load-time crashes
+    const ai = new GoogleGenAI({ apiKey: apiKey });
     const modelId = "gemini-2.5-flash";
     
+    // Check if the current resume is effectively empty (just initialized)
+    const isResumeEmpty = !currentResume || (currentResume.experience.length === 0 && currentResume.education.length === 0 && !currentResume.personalInfo.summary);
+
     // Construct prompt
     const prompt = `
       You are an expert CV writer. 
@@ -24,17 +47,16 @@ export const generateResumeFromJobDescription = async (
       
       Candidate Name: "${candidateName || 'Candidat'}"
 
-      ${currentResume ? `Current Profile Context (use this as a base but adapt strictly to the job description): ${JSON.stringify(currentResume)}` : 'Create a fictional but realistic high-quality candidate profile for this job using the Candidate Name provided.'}
+      ${!isResumeEmpty 
+        ? `CONTEXT: The user has existing data: ${JSON.stringify(currentResume)}. TASK: IMPROVE and ADAPT this data to match the job description. Rewrite the summary, tweak the experience descriptions to highlight relevant keywords. KEEP the factual history (dates, companies) unless they are empty.` 
+        : `CONTEXT: The user has no resume data yet. TASK: CREATE A FULLY FICTIONAL BUT REALISTIC PRE-FILLED RESUME for a candidate perfect for this job. GENERATE 3 work experiences, 2 education entries, 8 skills, and a strong summary.`
+      }
 
-      Task: Generate a JSON resume structure optimized for this job description.
-      - Extract keywords.
-      - Write a compelling summary using the candidate name.
-      - Create 2-3 relevant work experiences.
-      - List relevant skills.
-      - Create 1-2 education entries.
-      - Put the provided Candidate Name in personalInfo.fullName.
-      
-      IMPORTANT: Return ONLY valid JSON. No markdown formatting, no code blocks.
+      CRITICAL INSTRUCTIONS:
+      1. You MUST generate at least 2-3 items in the 'experience' array.
+      2. You MUST generate at least 1-2 items in the 'education' array.
+      3. You MUST generate at least 6-8 relevant skills.
+      4. Return ONLY valid JSON matching the schema.
     `;
 
     const response = await ai.models.generateContent({
@@ -122,6 +144,13 @@ export const generateResumeFromJobDescription = async (
       data.experience = data.experience.map((e: any) => ({ ...e, id: e.id || crypto.randomUUID() }));
       data.education = data.education.map((e: any) => ({ ...e, id: e.id || crypto.randomUUID() }));
       
+      // Preserve original personal info if it was provided and AI returned partial data
+      if (!isResumeEmpty && currentResume) {
+          if (!data.personalInfo.email && currentResume.personalInfo.email) data.personalInfo.email = currentResume.personalInfo.email;
+          if (!data.personalInfo.phone && currentResume.personalInfo.phone) data.personalInfo.phone = currentResume.personalInfo.phone;
+          if (!data.personalInfo.photoUrl && currentResume.personalInfo.photoUrl) data.personalInfo.photoUrl = currentResume.personalInfo.photoUrl;
+      }
+
       return data as ResumeData;
     }
     

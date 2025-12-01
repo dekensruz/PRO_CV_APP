@@ -1,4 +1,3 @@
-
 import React, { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 import { HashRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { supabase } from './services/supabaseClient';
@@ -34,7 +33,7 @@ const AppContext = createContext<AppContextType | undefined>(undefined);
 
 // --- Providers ---
 
-const AuthProvider = ({ children }: { children: ReactNode }) => {
+const AuthProvider = ({ children }: { children?: ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -94,7 +93,7 @@ const AuthProvider = ({ children }: { children: ReactNode }) => {
   );
 };
 
-const AppProvider = ({ children }: { children: ReactNode }) => {
+const AppProvider = ({ children }: { children?: ReactNode }) => {
   const [language, setLanguage] = useState<Language>('fr');
   const [theme, setTheme] = useState<'light' | 'dark'>('light');
 
@@ -131,13 +130,13 @@ export const useApp = () => {
 };
 
 // --- Protected Route ---
-const ProtectedRoute = ({ children }: { children: React.ReactElement }) => {
+const ProtectedRoute = ({ children }: { children?: React.ReactNode }) => {
   const { user, loading } = useAuth();
   
   if (loading) return <div className="h-screen w-full flex items-center justify-center"><Loader2 className="animate-spin w-8 h-8 text-primary-600" /></div>;
   if (!user) return <Navigate to="/" replace />;
   
-  return children;
+  return <>{children}</>;
 };
 
 // --- Main App ---

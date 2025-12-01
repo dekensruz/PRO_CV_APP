@@ -6,12 +6,12 @@ ProCV est une application de génération de CV intelligente utilisant l'IA pour
 
 - **IA Générative** : Créez ou optimisez un CV à partir d'une description de poste.
 - **Éditeur Complet** : Édition manuelle facile avec prévisualisation en temps réel.
-- **Templates** : Plusieurs modèles modernes et classiques.
+- **Templates** : Plusieurs modèles modernes et classiques (12+ designs).
 - **Export** : PDF haute qualité et format Word (DOCX).
 - **Bilingue** : Français (défaut) et Anglais.
 - **Thèmes** : Mode Clair (défaut) et Sombre.
 - **Avis** : Système d'avis utilisateurs avec upload d'images.
-- **Authentification** : Gestion utilisateurs via Supabase.
+- **Authentification** : Gestion utilisateurs via Supabase (Email/Mot de passe).
 
 ## Installation de la Base de Données
 
@@ -26,7 +26,21 @@ ProCV est une application de génération de CV intelligente utilisant l'IA pour
 2. Créez un nouveau Bucket public nommé `public-files`.
 3. Ajoutez des politiques (Policies) pour permettre la lecture (SELECT) publique et l'upload (INSERT) pour tous (ou utilisateurs authentifiés).
 
-## Configuration
+## Déploiement sur Vercel (Variables d'environnement)
 
-L'application utilise les clés Supabase fournies. Assurez-vous que l'authentification Google est activée dans votre projet Supabase si vous souhaitez utiliser la connexion sociale.
-La clé API IA doit être disponible dans `process.env.API_KEY`.
+Pour que l'IA fonctionne en production :
+
+1. Déployez votre projet sur Vercel.
+2. Allez dans le tableau de bord de votre projet Vercel -> **Settings** -> **Environment Variables**.
+3. Ajoutez la variable suivante :
+   - **Key** : `API_KEY` (ou `VITE_API_KEY` si vous utilisez Vite)
+   - **Value** : Votre clé API Google Gemini.
+
+Si vous avez une page blanche au démarrage, assurez-vous que les variables sont bien définies. L'application contient un correctif automatique (`window.process`) pour éviter les plantages si les variables ne sont pas injectées correctement lors du build.
+
+## Configuration Locale
+
+Créez un fichier `.env` à la racine :
+```
+API_KEY=votre_cle_api_ici
+```
