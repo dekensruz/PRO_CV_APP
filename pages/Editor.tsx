@@ -186,16 +186,22 @@ const Editor = () => {
 
   const handleCoverLetterClick = async () => {
       let currentResumeId = id;
+      // 1. Save Resume First to ensure it exists and we have an ID
       if (unsavedChanges || !id) {
           currentResumeId = await saveResume();
           if (!currentResumeId) return;
       }
+
       setCheckingLetter(true);
+      // 2. Check for ANY letter linked to this resume
       const { data: existingLetters } = await supabase.from('cover_letters').select('id').eq('resume_id', currentResumeId).limit(1);
       setCheckingLetter(false);
+
       if (existingLetters && existingLetters.length > 0) {
+          // 3. Navigate to existing letter
           navigate(`/cover-letter/${existingLetters[0].id}`);
       } else {
+          // 4. Create new if none exists
           const confirmCreate = window.confirm("Créer une lettre de motivation associée ?");
           if (confirmCreate && user) {
               const newLetterData = {
@@ -219,52 +225,81 @@ const Editor = () => {
     setAiStatus('Analyse de l\'offre et rédaction du CV...');
     
     try {
-      // 1. Generate Resume
+      // 1. Generate Resume Data
       const newResume = await generateResumeFromJobDescription(jobDescription, candidateName, resumeData, language);
       
       if (newResume) {
-        setResumeData(prev => ({ ...prev, ...newResume }));
+        // Merge with existing data
+        const updatedResumeData = { 
+            ...resumeData, 
+            ...newResume, 
+            personalInfo: { 
+                ...resumeData.personalInfo, 
+                ...newResume.personalInfo,
+                fullName: candidateName // Force name
+            } 
+        };
+
+        setResumeData(updatedResumeData);
         
-        // 2. Generate Cover Letter if requested
-        if (includeCoverLetter && user) {
-            setAiStatus('Rédaction de la lettre de motivation...');
-            
-            // Create a temporary object combining old data with new AI data
-            // Ensure fullname is set even if newResume missed it
-            const updatedResumeData = { 
-                ...resumeData, 
-                ...newResume, 
-                personalInfo: { 
-                    ...resumeData.personalInfo, 
-                    ...newResume.personalInfo,
-                    fullName: candidateName // Force the name from input
-                } 
+        // 2. AUTOMATIC SAVE OF RESUME (Crucial for linking)
+        let savedResumeId = id;
+        if (user) {
+            const payload = {
+                user_id: user.id,
+                title: title || 'CV Généré',
+                content: updatedResumeData,
+                template_id: template,
+                updated_at: new Date().toISOString()
             };
+
+            if (id) {
+                // Update existing
+                await supabase.from('resumes').update(payload).eq('id', id);
+            } else {
+                // Insert new
+                const { data: insertedResume } = await supabase.from('resumes').insert(payload).select().single();
+                if (insertedResume) {
+                    savedResumeId = insertedResume.id;
+                    // Update URL quietly so we stay on page but have ID
+                    navigate(`/editor/${insertedResume.id}`, { replace: true });
+                }
+            }
+        }
+        
+        // 3. Generate and SAVE Cover Letter (if requested)
+        if (includeCoverLetter && user && savedResumeId) {
+            setAiStatus('Rédaction de la lettre de motivation...');
             
             const newLetter = await generateCoverLetter(jobDescription, updatedResumeData, language);
             
             if (newLetter) {
-                // Save immediately to DB
+                // Save immediately to DB with LINK to resume
                 const { data: savedLetter } = await supabase.from('cover_letters').insert({
                     user_id: user.id,
                     title: `Lettre - ${updatedResumeData.personalInfo.jobTitle || 'Nouvelle'}`,
                     content: newLetter,
                     template_id: template,
-                    resume_id: id || undefined // Link if ID exists
+                    resume_id: savedResumeId // LINKED HERE
                 }).select().single();
 
                 setShowAiModal(false);
                 setAiStatus('');
                 setAiLoading(false);
 
-                if (window.confirm("CV et Lettre de motivation générés avec succès ! Voulez-vous ouvrir la lettre de motivation maintenant ?")) {
+                // Ask to go to letter
+                if (window.confirm("CV et Lettre de motivation générés et sauvegardés ! Ouvrir la lettre maintenant ?")) {
                     if (savedLetter) navigate(`/cover-letter/${savedLetter.id}`);
                 }
                 return; // Stop here if redirected
             }
         }
         
+        // Finalize if only resume
+        setUnsavedChanges(false);
+        lastSavedState.current = JSON.stringify({ data: updatedResumeData, title, template });
         setShowAiModal(false);
+        alert("CV généré et sauvegardé avec succès !");
       }
     } catch (e) { console.error(e); alert("Une erreur est survenue lors de la génération."); } 
     finally { 
