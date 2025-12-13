@@ -2,13 +2,13 @@
 import React, { useState, useEffect, useRef, useLayoutEffect } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { supabase } from '../services/supabaseClient';
-import { generateResumeFromJobDescription } from '../services/geminiService';
+import { generateResumeFromJobDescription, generateCoverLetter } from '../services/geminiService';
 import { useAuth, useApp } from '../App';
 import { ResumeData, TemplateType } from '../types';
-import { INITIAL_RESUME_STATE, TRANSLATIONS } from '../constants';
+import { INITIAL_RESUME_STATE, INITIAL_COVER_LETTER_STATE, TRANSLATIONS } from '../constants';
 import ResumePreview from '../components/ResumePreview';
 import { 
-  Save, ArrowLeft, Wand2, Download, Eye, Layout, Plus, Trash, AlertTriangle, Mail, Loader2, Upload, Edit
+  Save, ArrowLeft, Wand2, Download, Eye, Layout, Plus, Trash, AlertTriangle, Mail, Loader2, Upload, Edit, CheckSquare, Square
 } from 'lucide-react';
 import { toJpeg } from 'html-to-image';
 import jsPDF from 'jspdf';
@@ -29,7 +29,11 @@ const Editor = () => {
   const [checkingLetter, setCheckingLetter] = useState(false);
   const [aiLoading, setAiLoading] = useState(false);
   const [activeTab, setActiveTab] = useState('personal');
+  
+  // AI Modal States
   const [showAiModal, setShowAiModal] = useState(false);
+  const [includeCoverLetter, setIncludeCoverLetter] = useState(false);
+  
   const [showTemplateModal, setShowTemplateModal] = useState(false);
   const [unsavedChanges, setUnsavedChanges] = useState(false);
   
@@ -212,12 +216,34 @@ const Editor = () => {
     if (!candidateName.trim()) { alert("Nom obligatoire"); return; }
     setAiLoading(true);
     try {
+      // 1. Generate Resume
       const newResume = await generateResumeFromJobDescription(jobDescription, candidateName, resumeData, language);
+      
       if (newResume) {
         setResumeData(prev => ({ ...prev, ...newResume }));
+        
+        // 2. Generate Cover Letter if requested
+        if (includeCoverLetter && user) {
+            // Create a temporary object combining old data with new AI data
+            const updatedResumeData = { ...resumeData, ...newResume };
+            const newLetter = await generateCoverLetter(jobDescription, updatedResumeData, language);
+            
+            if (newLetter) {
+                // Save immediately to DB
+                await supabase.from('cover_letters').insert({
+                    user_id: user.id,
+                    title: `Lettre - ${updatedResumeData.personalInfo.jobTitle || 'Nouvelle'}`,
+                    content: newLetter,
+                    template_id: template,
+                    resume_id: id || undefined // Link if ID exists
+                });
+                alert("CV Généré ! La lettre de motivation a également été créée et sauvegardée dans votre tableau de bord.");
+            }
+        }
+        
         setShowAiModal(false);
       }
-    } catch (e) { console.error(e); } 
+    } catch (e) { console.error(e); alert("Une erreur est survenue lors de la génération."); } 
     finally { setAiLoading(false); }
   };
 
@@ -611,14 +637,50 @@ const Editor = () => {
         </div>
       </div>
       
-      {showAiModal && <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
-            <div className="bg-white dark:bg-slate-800 p-6 rounded-xl w-full max-w-lg">
-                <h3 className="text-xl font-bold mb-4">Générer avec IA</h3>
-                <input className="w-full p-2 border rounded mb-2" placeholder="Votre nom" value={candidateName} onChange={e => setCandidateName(e.target.value)} />
-                <textarea className="w-full p-2 border rounded h-32 mb-4" placeholder="Collez l'offre d'emploi..." value={jobDescription} onChange={e => setJobDescription(e.target.value)} />
-                <div className="flex justify-end gap-2">
-                    <button onClick={() => setShowAiModal(false)} className="px-4 py-2 text-slate-500">Annuler</button>
-                    <button onClick={handleAiGeneration} disabled={aiLoading} className="px-4 py-2 bg-primary-600 text-white rounded">{aiLoading ? '...' : 'Générer'}</button>
+      {showAiModal && <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-start justify-center pt-20 md:pt-0 md:items-center p-4 overflow-y-auto">
+            <div className="bg-white dark:bg-slate-800 p-6 rounded-xl w-full max-w-lg shadow-2xl relative">
+                <h3 className="text-xl font-bold mb-4 flex items-center gap-2 text-indigo-600"><Wand2 className="w-5 h-5"/> Générer avec IA</h3>
+                
+                <div className="mb-4">
+                     <label className="text-sm font-semibold text-slate-500 mb-1 block">Votre Nom</label>
+                     <input 
+                        className="w-full p-3 border rounded-lg bg-slate-50 dark:bg-slate-900 focus:ring-2 focus:ring-indigo-500 outline-none" 
+                        placeholder="Ex: Jean Dupont" 
+                        value={candidateName} 
+                        onChange={e => setCandidateName(e.target.value)} 
+                     />
+                </div>
+
+                <div className="mb-4">
+                     <label className="text-sm font-semibold text-slate-500 mb-1 block">Offre d'emploi</label>
+                     <textarea 
+                        className="w-full p-3 border rounded-lg h-32 bg-slate-50 dark:bg-slate-900 focus:ring-2 focus:ring-indigo-500 outline-none resize-none" 
+                        placeholder="Collez la description du poste ici..." 
+                        value={jobDescription} 
+                        onChange={e => setJobDescription(e.target.value)}
+                        autoFocus
+                     />
+                </div>
+                
+                <div className="mb-6">
+                    <label className="flex items-center gap-3 cursor-pointer p-3 rounded-lg border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors">
+                        <div onClick={() => setIncludeCoverLetter(!includeCoverLetter)} className={`w-5 h-5 rounded border flex items-center justify-center ${includeCoverLetter ? 'bg-indigo-600 border-indigo-600 text-white' : 'border-slate-400'}`}>
+                            {includeCoverLetter && <CheckSquare className="w-3.5 h-3.5" />}
+                        </div>
+                        <span className="text-sm font-medium">Générer aussi une lettre de motivation</span>
+                    </label>
+                </div>
+
+                <div className="flex justify-end gap-3">
+                    <button onClick={() => setShowAiModal(false)} className="px-4 py-2 text-slate-500 hover:bg-slate-100 rounded-lg">Annuler</button>
+                    <button 
+                        onClick={handleAiGeneration} 
+                        disabled={aiLoading} 
+                        className="px-6 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg flex items-center gap-2 font-medium disabled:opacity-50"
+                    >
+                        {aiLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Wand2 className="w-4 h-4" />}
+                        {aiLoading ? 'Génération...' : 'Générer'}
+                    </button>
                 </div>
             </div>
       </div>}
