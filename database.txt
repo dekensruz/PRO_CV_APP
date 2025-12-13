@@ -121,3 +121,38 @@ create policy "Public Upload" on storage.objects
 -- Update pour le propriétaire (optionnel)
 create policy "User Update" on storage.objects
   for update using (bucket_id = 'public-files' and auth.uid() = owner);
+
+-- --- NOUVEAU : LETTRES DE MOTIVATION ---
+
+-- Création de la table pour les lettres de motivation
+create table cover_letters (
+  id uuid default uuid_generate_v4() primary key,
+  user_id uuid references auth.users not null,
+  title text default 'Ma Lettre de Motivation',
+  content jsonb default '{}'::jsonb,
+  template_id text default 'modern',
+  resume_id uuid references resumes(id) ON DELETE SET NULL, -- LIEN AVEC LE CV
+  created_at timestamp with time zone default timezone('utc'::text, now()) not null,
+  updated_at timestamp with time zone default timezone('utc'::text, now()) not null
+);
+
+-- Sécurité Row Level Security (RLS) pour les lettres de motivation
+alter table cover_letters enable row level security;
+
+create policy "Users can view own cover letters." on cover_letters
+  for select using (auth.uid() = user_id);
+
+create policy "Users can insert own cover letters." on cover_letters
+  for insert with check (auth.uid() = user_id);
+
+create policy "Users can update own cover letters." on cover_letters
+  for update using (auth.uid() = user_id);
+
+create policy "Users can delete own cover letters." on cover_letters
+  for delete using (auth.uid() = user_id);
+
+-- Trigger pour la mise à jour automatique de la date updated_at
+drop trigger if exists on_cover_letters_updated on cover_letters;
+create trigger on_cover_letters_updated
+  before update on cover_letters
+  for each row execute procedure public.handle_updated_at();

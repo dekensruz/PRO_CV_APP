@@ -1,10 +1,11 @@
+
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { useApp, useAuth } from '../App';
 import { TRANSLATIONS } from '../constants';
 import { supabase } from '../services/supabaseClient';
 import { Review } from '../types';
-import { FileText, Wand2, Download, CheckCircle, ChevronRight, Star, Copy, Zap, PenTool, Upload, X, Loader2 } from 'lucide-react';
+import { FileText, Wand2, Download, CheckCircle, ChevronRight, Star, Copy, Zap, PenTool, Upload, X, Loader2, Mail } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import Footer from '../components/Footer';
 
@@ -191,12 +192,18 @@ const LandingPage = () => {
       {/* Features Grid */}
       <section id="features" className="py-24 bg-slate-50 dark:bg-slate-800/30">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="grid md:grid-cols-3 gap-8">
+          <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-8">
             <FeatureCard 
               icon={<Wand2 className="w-8 h-8 text-primary-500" />}
               title={t.features.ai.title}
               desc={t.features.ai.desc}
               delay={0.1}
+            />
+             <FeatureCard 
+              icon={<Mail className="w-8 h-8 text-pink-500" />}
+              title={t.features.coverLetter.title}
+              desc={t.features.coverLetter.desc}
+              delay={0.15}
             />
             <FeatureCard 
               icon={<PenTool className="w-8 h-8 text-indigo-500" />}

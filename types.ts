@@ -40,6 +40,32 @@ export interface EducationItem {
   description?: string;
 }
 
+export interface CoverLetterData {
+  id?: string;
+  personalInfo: {
+    fullName: string;
+    email: string;
+    phone: string;
+    address: string;
+  };
+  recipientInfo: {
+    managerName: string;
+    company: string;
+    address: string;
+  };
+  content: {
+    subject: string;
+    opening: string;
+    body: string[]; // Array of paragraphs
+    closing: string;
+  };
+  signature: {
+    type: 'text' | 'image' | 'draw';
+    text: string;
+    imageUrl: string;
+  };
+}
+
 export type TemplateType = 'modern' | 'classic' | 'minimalist' | 'executive' | 'creative' | 'tech' | 'compact' | 'timeline' | 'leftborder' | 'glitch' | 'swiss' | 'double';
 
 export interface UserProfile {

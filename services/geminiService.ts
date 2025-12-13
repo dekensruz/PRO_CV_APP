@@ -1,5 +1,6 @@
+
 import { GoogleGenAI, Type } from "@google/genai";
-import { ResumeData } from "../types";
+import { ResumeData, CoverLetterData } from "../types";
 
 // Helper to safely get the API key
 const getApiKey = () => {
@@ -161,6 +162,104 @@ export const generateResumeFromJobDescription = async (
 
   } catch (error) {
     console.error("Gemini Generation Error:", error);
+    throw error;
+  }
+};
+
+export const generateCoverLetter = async (
+  jobDescription: string,
+  resumeData: ResumeData,
+  language: 'fr' | 'en' = 'fr'
+): Promise<CoverLetterData | null> => {
+  try {
+    const apiKey = getApiKey();
+    if (!apiKey) return null;
+
+    const ai = new GoogleGenAI({ apiKey: apiKey });
+    const modelId = "gemini-2.5-flash";
+
+    // Determine if resume is empty to adjust prompt
+    const isResumeSparse = !resumeData.experience || resumeData.experience.length === 0;
+
+    const prompt = `
+      You are an expert career coach.
+      Language required: ${language === 'fr' ? 'French' : 'English'}.
+      
+      TASK: Write a professional COVER LETTER based on the candidate's resume and the job description.
+      
+      Job Description:
+      "${jobDescription}"
+      
+      Candidate Info:
+      Name: ${resumeData.personalInfo.fullName}
+      Current Title: ${resumeData.personalInfo.jobTitle}
+      Resume Data: ${JSON.stringify(resumeData)}
+
+      Instructions:
+      1. Extract the company name from the job description if possible.
+      2. Write a compelling opening, body paragraphs highlighting fit, and a professional closing.
+      3. The body should have 2-3 paragraphs.
+      
+      ${isResumeSparse 
+        ? "NOTE: The user's resume data is minimal. Focus heavily on the Job Description requirements. Invent professional but generic placeholders for experience if needed (e.g., '[Your relevant experience in field...]') or write in a way that emphasizes soft skills and potential." 
+        : "Use the candidate's specific experience from the resume to prove they are a good fit."}
+
+      4. Return strict JSON.
+    `;
+
+    const response = await ai.models.generateContent({
+      model: modelId,
+      contents: prompt,
+      config: {
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            recipientInfo: {
+              type: Type.OBJECT,
+              properties: {
+                 managerName: { type: Type.STRING, description: "Name of hiring manager if found, else 'Hiring Manager' or 'Responsable du recrutement'" },
+                 company: { type: Type.STRING, description: "Company name from job description" },
+                 address: { type: Type.STRING, description: "Company address if found, else empty" }
+              }
+            },
+            content: {
+              type: Type.OBJECT,
+              properties: {
+                subject: { type: Type.STRING },
+                opening: { type: Type.STRING },
+                body: { type: Type.ARRAY, items: { type: Type.STRING } },
+                closing: { type: Type.STRING }
+              }
+            }
+          }
+        }
+      }
+    });
+
+    if (response.text) {
+      const data = JSON.parse(response.text);
+      
+      return {
+        personalInfo: {
+           fullName: resumeData.personalInfo.fullName,
+           email: resumeData.personalInfo.email,
+           phone: resumeData.personalInfo.phone,
+           address: resumeData.personalInfo.address
+        },
+        recipientInfo: data.recipientInfo,
+        content: data.content,
+        signature: {
+            type: 'text',
+            text: resumeData.personalInfo.fullName,
+            imageUrl: ''
+        }
+      } as CoverLetterData;
+    }
+
+    return null;
+  } catch (error) {
+    console.error("Cover Letter Generation Error:", error);
     throw error;
   }
 };

@@ -3,6 +3,7 @@ import react from '@vitejs/plugin-react';
 
 export default defineConfig(({ mode }) => {
   // Charge les variables d'environnement
+  // @ts-ignore
   const env = loadEnv(mode, process.cwd(), '');
 
   return {

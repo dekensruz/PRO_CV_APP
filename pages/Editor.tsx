@@ -2,13 +2,13 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { supabase } from '../services/supabaseClient';
-import { generateResumeFromJobDescription } from '../services/geminiService';
+import { generateResumeFromJobDescription, generateCoverLetter } from '../services/geminiService';
 import { useAuth, useApp } from '../App';
 import { ResumeData, TemplateType } from '../types';
 import { INITIAL_RESUME_STATE, TRANSLATIONS } from '../constants';
 import ResumePreview from '../components/ResumePreview';
 import { 
-  Save, ArrowLeft, Wand2, Download, Eye, Layout, Plus, Trash, ChevronDown, ChevronUp, User, Upload, Image as ImageIcon, Check, RefreshCw, AlertTriangle, Edit
+  Save, ArrowLeft, Wand2, Download, Eye, Layout, Plus, Trash, ChevronDown, ChevronUp, User, Upload, Image as ImageIcon, Check, RefreshCw, AlertTriangle, Edit, Mail, Loader2
 } from 'lucide-react';
 import html2canvas from 'html2canvas';
 import jsPDF from 'jspdf';
@@ -26,6 +26,7 @@ const Editor = () => {
   const [resumeData, setResumeData] = useState<ResumeData>(INITIAL_RESUME_STATE);
   const [template, setTemplate] = useState<TemplateType>('modern');
   const [loading, setLoading] = useState(false);
+  const [checkingLetter, setCheckingLetter] = useState(false);
   const [aiLoading, setAiLoading] = useState(false);
   const [activeTab, setActiveTab] = useState('personal');
   const [showAiModal, setShowAiModal] = useState(false);
@@ -41,6 +42,7 @@ const Editor = () => {
   // AI Generation State
   const [jobDescription, setJobDescription] = useState('');
   const [candidateName, setCandidateName] = useState('');
+  const [generateCL, setGenerateCL] = useState(false);
   
   const [title, setTitle] = useState('Mon CV');
   const previewRef = useRef<HTMLDivElement>(null);
@@ -156,14 +158,8 @@ const Editor = () => {
       if (draft) {
           try {
               const parsed = JSON.parse(draft);
-              // Simple check: if draft is strictly different from DB
               if (JSON.stringify(parsed.data) !== JSON.stringify(content)) {
-                  // In a real app, we might ask user. For now, we load draft if it exists to be safe, 
-                  // but ideally we should check timestamps.
-                  // Let's stick to DB source of truth unless user is creating new, 
-                  // OR if we want to be very helpful, we can show a toast.
-                  // For this implementation, let's load DB to ensure consistency with "Saved" state,
-                  // unless we implement complex merge.
+                  // Keep simple for now
               }
           } catch(e) {}
       }
@@ -218,7 +214,6 @@ const Editor = () => {
         console.error(error);
         alert("Erreur lors de la sauvegarde. Veuillez réessayer.");
     } else {
-        // SUCCESS: Update the reference point to the current state
         lastSavedState.current = JSON.stringify({
             data: resumeData,
             title,
@@ -227,6 +222,78 @@ const Editor = () => {
         setUnsavedChanges(false);
     }
     setLoading(false);
+    return savedId;
+  };
+
+  // Logic to navigate to or create a cover letter based on this resume
+  const handleCoverLetterClick = async () => {
+      // 1. Ensure Resume is Saved First
+      let currentResumeId = id;
+      if (unsavedChanges || !id) {
+          currentResumeId = await saveResume();
+          if (!currentResumeId) return; // Save failed
+      }
+
+      setCheckingLetter(true);
+
+      // 2. Check if a linked letter already exists
+      const { data: existingLetters } = await supabase
+          .from('cover_letters')
+          .select('id')
+          .eq('resume_id', currentResumeId)
+          .limit(1);
+
+      setCheckingLetter(false);
+
+      if (existingLetters && existingLetters.length > 0) {
+          // Found: Navigate to it
+          navigate(`/cover-letter/${existingLetters[0].id}`);
+      } else {
+          // Not Found: Ask to create
+          const confirmCreate = window.confirm("Aucune lettre de motivation n'est associée à ce CV pour le moment. Voulez-vous en créer une maintenant ?");
+          
+          if (confirmCreate && user) {
+              // Pre-fill cover letter data from resume
+              const newLetterData = {
+                  ...INITIAL_RESUME_STATE, // Fallback schema match
+                  personalInfo: {
+                      fullName: resumeData.personalInfo.fullName,
+                      email: resumeData.personalInfo.email,
+                      phone: resumeData.personalInfo.phone,
+                      address: resumeData.personalInfo.address
+                  },
+                  recipientInfo: {
+                      managerName: "Responsable du recrutement",
+                      company: "Nom de l'entreprise",
+                      address: ""
+                  },
+                  content: {
+                      subject: `Candidature au poste de ${resumeData.personalInfo.jobTitle}`,
+                      opening: "Madame, Monsieur,",
+                      body: ["(Utilisez l'IA pour générer le contenu complet basé sur votre CV et une offre d'emploi)"],
+                      closing: "Je reste à votre disposition..."
+                  },
+                  signature: { type: 'text', text: resumeData.personalInfo.fullName, imageUrl: '' }
+              };
+
+              setCheckingLetter(true);
+              const { data: newLetter, error } = await supabase.from('cover_letters').insert({
+                  user_id: user.id,
+                  title: `Lettre - ${resumeData.personalInfo.jobTitle || 'Nouveau'}`,
+                  content: newLetterData,
+                  template_id: template, // Match resume template style
+                  resume_id: currentResumeId // Link to CV
+              }).select().single();
+              setCheckingLetter(false);
+
+              if (newLetter && !error) {
+                  navigate(`/cover-letter/${newLetter.id}`);
+              } else {
+                  console.error(error);
+                  alert("Erreur lors de la création de la lettre.");
+              }
+          }
+      }
   };
 
   const handleAiGeneration = async () => {
@@ -236,13 +303,60 @@ const Editor = () => {
     }
     setAiLoading(true);
     try {
+      // 1. Generate Resume
       const newResume = await generateResumeFromJobDescription(jobDescription, candidateName, resumeData, language);
       if (newResume) {
         setResumeData(prev => ({ ...prev, ...newResume }));
+        
+        // 2. If requested, generate Cover Letter based on the new resume
+        if (generateCL && user) {
+            // Need to save resume first to get an ID for linking? 
+            // For now, we generate content first, user saves later.
+            // But if we want to save CL immediately, we need resume saved ideally.
+            // Let's generate content only and let user save via the Editor.
+            
+            // To properly link, we should save the resume first.
+            let savedResumeId = id;
+            if(!id) {
+               // Implicit save
+               const { data: savedData } = await supabase.from('resumes').insert({
+                   user_id: user.id,
+                   title: `CV - ${newResume.personalInfo.jobTitle}`,
+                   content: newResume,
+                   template_id: template,
+                   updated_at: new Date().toISOString()
+               }).select().single();
+               if(savedData) savedResumeId = savedData.id;
+            }
+
+            if(savedResumeId) {
+                const coverLetter = await generateCoverLetter(jobDescription, {...resumeData, ...newResume}, language);
+                if (coverLetter) {
+                    const { data: newCL } = await supabase.from('cover_letters').insert({
+                        user_id: user.id,
+                        title: `Lettre pour ${newResume.personalInfo.jobTitle || 'Poste'}`,
+                        content: coverLetter,
+                        template_id: 'modern',
+                        resume_id: savedResumeId
+                    }).select().single();
+                    
+                    if (newCL) {
+                        if (window.confirm("Le CV et la lettre de motivation ont été générés ! Voulez-vous voir la lettre maintenant ?")) {
+                            navigate(`/cover-letter/${newCL.id}`);
+                            return; 
+                        } else {
+                            // If they stay, make sure we navigate to the saved resume ID if it was new
+                            if(!id) navigate(`/editor/${savedResumeId}`, { replace: true });
+                        }
+                    }
+                }
+            }
+        }
         setShowAiModal(false);
       }
     } catch (e) {
-      alert("Error generating resume. Please try again.");
+      alert("Error generating content. Please try again.");
+      console.error(e);
     } finally {
       setAiLoading(false);
     }
@@ -277,11 +391,7 @@ const Editor = () => {
   
   const exportPDF = async () => {
     if (!previewRef.current) return;
-    
-    // Warn about save first
-    if (unsavedChanges) {
-        await saveResume();
-    }
+    if (unsavedChanges) await saveResume();
     
     const element = previewRef.current;
     const clone = element.cloneNode(true) as HTMLElement;
@@ -295,7 +405,6 @@ const Editor = () => {
     container.style.zIndex = '-1000';
     container.style.background = '#ffffff';
     
-    // Force visibility on clone in case mobile view has hidden the preview
     clone.style.display = 'block';
     clone.style.transform = 'none';
     clone.style.width = '100%';
@@ -308,24 +417,18 @@ const Editor = () => {
 
     try {
         setLoading(true);
-        
         const canvas = await html2canvas(container, { 
           scale: 2, 
           useCORS: true, 
-          logging: false,
-          allowTaint: true,
           backgroundColor: '#ffffff',
           width: container.offsetWidth, 
           windowWidth: container.offsetWidth
         });
-        
         const imgData = canvas.toDataURL('image/jpeg', 0.95);
-        
+        const pdf = new jsPDF('p', 'mm', 'a4');
         const imgWidth = 210; 
         const pageHeight = 297; 
         const imgHeight = (canvas.height * imgWidth) / canvas.width;
-        
-        const pdf = new jsPDF('p', 'mm', 'a4');
         let heightLeft = imgHeight;
         let position = 0;
 
@@ -338,7 +441,6 @@ const Editor = () => {
           pdf.addImage(imgData, 'JPEG', 0, position, imgWidth, imgHeight);
           heightLeft -= pageHeight;
         }
-        
         pdf.save(`${title.replace(/\s+/g, '_')}.pdf`);
     } catch (err) {
         console.error("Export failed", err);
@@ -380,7 +482,6 @@ const Editor = () => {
         ],
       }],
     });
-
     const blob = await Packer.toBlob(doc);
     saveAs(blob, `${title}.docx`);
   };
@@ -438,7 +539,7 @@ const Editor = () => {
 
   return (
     <div className="flex flex-col h-screen bg-slate-100 dark:bg-slate-900 overflow-hidden">
-      {/* Top Bar - Responsive */}
+      {/* Top Bar */}
       <div className="h-14 md:h-16 bg-white dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 flex items-center justify-between px-2 md:px-4 z-20 shadow-sm shrink-0">
         <div className="flex items-center gap-2 md:gap-4 flex-1 min-w-0">
           <button onClick={goBack} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-full shrink-0">
@@ -457,10 +558,19 @@ const Editor = () => {
         </div>
         
         <div className="flex items-center gap-1 md:gap-2 shrink-0">
+          {/* BOUTON VERS LETTRE DE MOTIVATION CORRIGÉ */}
+          <button 
+            onClick={handleCoverLetterClick}
+            disabled={checkingLetter}
+            className="flex items-center gap-2 px-2 md:px-3 py-1.5 bg-pink-100 text-pink-700 dark:bg-pink-900/30 dark:text-pink-300 rounded-lg text-xs md:text-sm font-medium hover:bg-pink-200 transition-colors disabled:opacity-50"
+          >
+            {checkingLetter ? <Loader2 className="w-4 h-4 animate-spin" /> : <Mail className="w-4 h-4" />}
+            <span className="hidden md:inline">Lettre associée</span>
+          </button>
+
           <button 
             onClick={() => setShowTemplateModal(true)}
             className="flex items-center gap-2 px-2 md:px-3 py-1.5 bg-slate-100 text-slate-700 dark:bg-slate-700 dark:text-slate-300 rounded-lg text-xs md:text-sm font-medium hover:bg-slate-200 transition-colors"
-            title={t.buttons.changeTemplate}
           >
             <Layout className="w-4 h-4" />
             <span className="hidden md:inline">{t.buttons.changeTemplate}</span>
@@ -469,7 +579,6 @@ const Editor = () => {
           <button 
             onClick={() => setShowAiModal(true)}
             className="flex items-center gap-2 px-2 md:px-3 py-1.5 bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300 rounded-lg text-xs md:text-sm font-medium hover:bg-indigo-200 transition-colors"
-            title={t.buttons.generateAI}
           >
             <Wand2 className="w-4 h-4" />
             <span className="hidden md:inline">{t.buttons.generateAI}</span>
@@ -495,10 +604,8 @@ const Editor = () => {
         </div>
       </div>
 
-      {/* Main Content - Responsive View Toggle */}
+      {/* Main Content */}
       <div className="flex flex-1 overflow-hidden relative">
-        
-        {/* Editor Panel (Visible on Desktop OR if mobile view is 'editor') */}
         <div className={`w-full md:w-5/12 lg:w-5/12 overflow-y-auto p-4 md:p-6 border-r border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 h-full ${mobileView === 'preview' ? 'hidden md:block' : 'block'}`}>
             <div className="flex space-x-1 mb-6 bg-slate-100 dark:bg-slate-900/50 p-1 rounded-lg overflow-x-auto no-scrollbar">
                 {['personal', 'experience', 'education', 'skills'].map(tab => (
@@ -648,14 +755,14 @@ const Editor = () => {
             )}
         </div>
 
-        {/* Preview Panel (Visible on Desktop OR if mobile view is 'preview') */}
+        {/* Preview Panel */}
         <div className={`w-full md:w-7/12 lg:w-7/12 bg-slate-200 dark:bg-slate-950 p-4 md:p-8 overflow-y-auto flex flex-col items-center h-full relative ${mobileView === 'editor' ? 'hidden md:flex' : 'flex'}`}>
              <div className="shadow-2xl origin-top transition-transform duration-300 scale-[0.45] sm:scale-50 md:scale-75 lg:scale-[0.85] xl:scale-90">
                 <ResumePreview ref={previewRef} data={resumeData} template={template} />
              </div>
         </div>
 
-        {/* Mobile View Toggle Button (Floating) */}
+        {/* Mobile View Toggle */}
         <div className="md:hidden fixed bottom-6 right-6 z-50">
             <button 
                 onClick={() => setMobileView(mobileView === 'editor' ? 'preview' : 'editor')}
@@ -666,7 +773,7 @@ const Editor = () => {
         </div>
       </div>
 
-      {/* AI Modal */}
+      {/* AI Modal (Hidden code remains same) */}
       {showAiModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
           <div className="bg-white dark:bg-slate-800 rounded-xl shadow-2xl w-full max-w-lg p-6 animate-in zoom-in-95 duration-200">
@@ -703,6 +810,19 @@ const Editor = () => {
                         className="w-full h-32 p-3 border border-slate-300 dark:border-slate-600 rounded-lg bg-slate-50 dark:bg-slate-900 resize-none focus:ring-2 focus:ring-primary-500 outline-none"
                     />
                  </div>
+                 
+                 <div className="flex items-center gap-2 pt-2">
+                     <input 
+                        type="checkbox" 
+                        id="genCL" 
+                        checked={generateCL} 
+                        onChange={e => setGenerateCL(e.target.checked)} 
+                        className="w-4 h-4 text-primary-600 rounded focus:ring-primary-500"
+                     />
+                     <label htmlFor="genCL" className="text-sm text-slate-700 dark:text-slate-300 cursor-pointer">
+                         {t.aiModal.includeCoverLetter}
+                     </label>
+                 </div>
             </div>
 
             <div className="flex justify-end gap-3 pt-2">
@@ -725,7 +845,7 @@ const Editor = () => {
         </div>
       )}
 
-      {/* Template Selection Modal */}
+      {/* Template Modal (Hidden for brevity, same as previous) */}
       {showTemplateModal && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
               <div className="bg-white dark:bg-slate-800 rounded-xl shadow-2xl w-full max-w-5xl p-6 h-[85vh] flex flex-col">
@@ -733,9 +853,7 @@ const Editor = () => {
                       <h3 className="text-xl font-bold">{t.templateModal.title}</h3>
                       <button onClick={() => setShowTemplateModal(false)}><span className="text-2xl">&times;</span></button>
                   </div>
-                  
                   <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6 overflow-y-auto p-2">
-                       {/* Template Cards */}
                        {[
                            {id: 'modern', name: 'Modern', color: 'bg-slate-800'},
                            {id: 'classic', name: 'Classic', color: 'bg-white border'},
@@ -746,9 +864,9 @@ const Editor = () => {
                            {id: 'compact', name: 'Compact', color: 'bg-blue-50'},
                            {id: 'timeline', name: 'Timeline', color: 'bg-white border-l-4 border-blue-500'},
                            {id: 'leftborder', name: 'Left Border', color: 'bg-white border-l-8 border-slate-800'},
-                           {id: 'glitch', name: 'Glitch (New)', color: 'bg-black border border-green-500'},
-                           {id: 'swiss', name: 'Swiss (New)', color: 'bg-red-600'},
-                           {id: 'double', name: 'Double (New)', color: 'bg-white border-t-8 border-indigo-900'},
+                           {id: 'glitch', name: 'Glitch', color: 'bg-black border border-green-500'},
+                           {id: 'swiss', name: 'Swiss', color: 'bg-red-600'},
+                           {id: 'double', name: 'Double', color: 'bg-white border-t-8 border-indigo-900'},
                        ].map(tmp => (
                            <div 
                                 key={tmp.id} 
@@ -756,7 +874,6 @@ const Editor = () => {
                                 className={`cursor-pointer group relative rounded-lg overflow-hidden border-2 transition-all ${template === tmp.id ? 'border-primary-500 ring-2 ring-primary-200' : 'border-transparent hover:border-slate-300'}`}
                            >
                                <div className={`aspect-[210/297] ${tmp.color} flex flex-col p-4 shadow-sm`}>
-                                   {/* Mini preview sketch */}
                                    <div className="w-1/2 h-4 bg-current opacity-20 mb-2 rounded"></div>
                                    <div className="w-full h-1 bg-current opacity-10 mb-1 rounded"></div>
                                    <div className="w-full h-1 bg-current opacity-10 mb-4 rounded"></div>
@@ -764,7 +881,7 @@ const Editor = () => {
                                </div>
                                <div className="absolute inset-x-0 bottom-0 bg-white/90 dark:bg-slate-900/90 p-3 text-center font-medium translate-y-full group-hover:translate-y-0 transition-transform">
                                    {tmp.name}
-                               </div>
+                                </div>
                                {template === tmp.id && (
                                    <div className="absolute top-2 right-2 bg-primary-600 text-white p-1 rounded-full shadow-lg">
                                        <Check className="w-4 h-4" />
@@ -780,7 +897,6 @@ const Editor = () => {
   );
 };
 
-// UI Helpers
 const InputField = ({ label, value, onChange, type = "text", placeholder }: any) => (
     <div className="flex flex-col gap-1">
         <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">{label}</label>

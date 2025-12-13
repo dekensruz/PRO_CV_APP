@@ -118,8 +118,8 @@ const Navbar = () => {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between h-16 items-center">
             <div className="flex-shrink-0 flex items-center cursor-pointer" onClick={() => navigate('/')}>
-              <img className="h-10 w-auto" src="https://i.ibb.co/NnYwxp20/pro-cv-logo.png" alt="ProCV" />
-              <span className="ml-2 text-xl font-bold bg-gradient-to-r from-primary-600 to-indigo-600 bg-clip-text text-transparent">
+              <img className="h-8 w-auto md:h-10" src="https://i.ibb.co/NnYwxp20/pro-cv-logo.png" alt="ProCV" />
+              <span className="ml-2 text-lg md:text-xl font-bold bg-gradient-to-r from-primary-600 to-indigo-600 bg-clip-text text-transparent">
                 ProCV
               </span>
             </div>
@@ -183,9 +183,26 @@ const Navbar = () => {
               )}
             </div>
 
-            {/* Mobile Menu Button */}
-            <div className="md:hidden flex items-center">
-              <button onClick={() => setIsOpen(!isOpen)} className="p-2">
+            {/* Mobile Header Controls */}
+            <div className="md:hidden flex items-center gap-1">
+               {/* Language Mobile */}
+              <button 
+                onClick={() => setLanguage(language === 'fr' ? 'en' : 'fr')}
+                className="p-2 rounded-lg text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
+              >
+                <span className="text-xs font-bold">{language.toUpperCase()}</span>
+              </button>
+
+              {/* Theme Mobile */}
+              <button 
+                onClick={toggleTheme}
+                className="p-2 rounded-lg text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
+              >
+                {theme === 'light' ? <Moon className="w-5 h-5" /> : <Sun className="w-5 h-5" />}
+              </button>
+
+              {/* Menu Toggle */}
+              <button onClick={() => setIsOpen(!isOpen)} className="p-2 ml-1 text-slate-700 dark:text-slate-200">
                   {isOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
               </button>
             </div>
@@ -197,26 +214,20 @@ const Navbar = () => {
           <div className="md:hidden bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 p-4 space-y-4 shadow-xl">
               <button onClick={() => handleScroll('features')} className="block w-full text-left py-2 font-medium">{t.features}</button>
               <button onClick={() => handleScroll('templates')} className="block w-full text-left py-2 font-medium">{t.templates}</button>
+              
               <div className="border-t border-slate-200 dark:border-slate-800 my-2"></div>
-              <div className="flex justify-between items-center py-2">
-                  <span className="font-medium">Language</span>
-                  <button onClick={() => setLanguage(language === 'fr' ? 'en' : 'fr')} className="flex items-center gap-2 border px-3 py-1 rounded-lg">
-                      <Languages className="w-4 h-4" /> {language.toUpperCase()}
-                  </button>
-              </div>
-              <div className="flex justify-between items-center py-2">
-                  <span className="font-medium">Theme</span>
-                  <button onClick={toggleTheme} className="p-2 border rounded-lg">
-                      {theme === 'light' ? <Moon className="w-4 h-4" /> : <Sun className="w-4 h-4" />}
-                  </button>
-              </div>
-               {user ? (
+              
+              {user ? (
                   <>
                       <Link to="/dashboard" className="block w-full py-2 font-medium text-primary-600">{t.dashboard}</Link>
-                      <button onClick={signOut} className="block w-full text-left py-2 text-red-500">{t.logout}</button>
+                      <button onClick={signOut} className="block w-full text-left py-2 text-red-500 flex items-center gap-2">
+                          <LogOut className="w-4 h-4" /> {t.logout}
+                      </button>
                   </>
                ) : (
-                  <button onClick={() => { setIsOpen(false); resetForm(); setShowLoginModal(true); }} className="w-full bg-primary-600 text-white py-3 rounded-xl font-medium">{t.login}</button>
+                  <button onClick={() => { setIsOpen(false); resetForm(); setShowLoginModal(true); }} className="w-full bg-primary-600 text-white py-3 rounded-xl font-medium flex items-center justify-center gap-2">
+                      <User className="w-4 h-4" /> {t.login}
+                  </button>
                )}
           </div>
         )}

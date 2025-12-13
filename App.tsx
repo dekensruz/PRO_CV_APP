@@ -1,3 +1,4 @@
+
 import React, { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 import { HashRouter, Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { supabase } from './services/supabaseClient';
@@ -6,6 +7,7 @@ import { Language } from './types';
 import LandingPage from './pages/LandingPage';
 import Dashboard from './pages/Dashboard';
 import Editor from './pages/Editor';
+import CoverLetterEditor from './pages/CoverLetterEditor';
 import { Loader2 } from 'lucide-react';
 import Navbar from './components/Navbar';
 
@@ -145,15 +147,10 @@ const AppContent = () => {
   const location = useLocation();
   const navigate = useNavigate();
   const { user, loading } = useAuth();
-  const isEditor = location.pathname.includes('/editor');
+  const isEditor = location.pathname.includes('/editor') || location.pathname.includes('/cover-letter');
 
-  // Redirection automatique si l'utilisateur est connecté et sur la page d'accueil
-  // Cela gère le retour de l'authentification Google
-  useEffect(() => {
-    if (!loading && user && location.pathname === '/') {
-      navigate('/dashboard');
-    }
-  }, [user, loading, location.pathname, navigate]);
+  // MODIFICATION: Suppression de la redirection automatique pour permettre l'accès à la Landing Page
+  // L'utilisateur peut maintenant naviguer vers "/" même connecté.
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -174,6 +171,14 @@ const AppContent = () => {
             element={
               <ProtectedRoute>
                 <Editor />
+              </ProtectedRoute>
+            } 
+          />
+          <Route 
+            path="/cover-letter/:id?" 
+            element={
+              <ProtectedRoute>
+                <CoverLetterEditor />
               </ProtectedRoute>
             } 
           />
