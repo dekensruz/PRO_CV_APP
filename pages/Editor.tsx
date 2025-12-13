@@ -28,6 +28,7 @@ const Editor = () => {
   const [loading, setLoading] = useState(false);
   const [checkingLetter, setCheckingLetter] = useState(false);
   const [aiLoading, setAiLoading] = useState(false);
+  const [aiStatus, setAiStatus] = useState<string>('');
   const [activeTab, setActiveTab] = useState('personal');
   
   // AI Modal States
@@ -215,6 +216,8 @@ const Editor = () => {
   const handleAiGeneration = async () => {
     if (!candidateName.trim()) { alert("Nom obligatoire"); return; }
     setAiLoading(true);
+    setAiStatus('Analyse de l\'offre et rédaction du CV...');
+    
     try {
       // 1. Generate Resume
       const newResume = await generateResumeFromJobDescription(jobDescription, candidateName, resumeData, language);
@@ -224,27 +227,50 @@ const Editor = () => {
         
         // 2. Generate Cover Letter if requested
         if (includeCoverLetter && user) {
+            setAiStatus('Rédaction de la lettre de motivation...');
+            
             // Create a temporary object combining old data with new AI data
-            const updatedResumeData = { ...resumeData, ...newResume };
+            // Ensure fullname is set even if newResume missed it
+            const updatedResumeData = { 
+                ...resumeData, 
+                ...newResume, 
+                personalInfo: { 
+                    ...resumeData.personalInfo, 
+                    ...newResume.personalInfo,
+                    fullName: candidateName // Force the name from input
+                } 
+            };
+            
             const newLetter = await generateCoverLetter(jobDescription, updatedResumeData, language);
             
             if (newLetter) {
                 // Save immediately to DB
-                await supabase.from('cover_letters').insert({
+                const { data: savedLetter } = await supabase.from('cover_letters').insert({
                     user_id: user.id,
                     title: `Lettre - ${updatedResumeData.personalInfo.jobTitle || 'Nouvelle'}`,
                     content: newLetter,
                     template_id: template,
                     resume_id: id || undefined // Link if ID exists
-                });
-                alert("CV Généré ! La lettre de motivation a également été créée et sauvegardée dans votre tableau de bord.");
+                }).select().single();
+
+                setShowAiModal(false);
+                setAiStatus('');
+                setAiLoading(false);
+
+                if (window.confirm("CV et Lettre de motivation générés avec succès ! Voulez-vous ouvrir la lettre de motivation maintenant ?")) {
+                    if (savedLetter) navigate(`/cover-letter/${savedLetter.id}`);
+                }
+                return; // Stop here if redirected
             }
         }
         
         setShowAiModal(false);
       }
     } catch (e) { console.error(e); alert("Une erreur est survenue lors de la génération."); } 
-    finally { setAiLoading(false); }
+    finally { 
+        setAiLoading(false); 
+        setAiStatus('');
+    }
   };
 
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -645,7 +671,7 @@ const Editor = () => {
                      <label className="text-sm font-semibold text-slate-500 mb-1 block">Votre Nom</label>
                      <input 
                         className="w-full p-3 border rounded-lg bg-slate-50 dark:bg-slate-900 focus:ring-2 focus:ring-indigo-500 outline-none" 
-                        placeholder="Ex: Jean Dupont" 
+                        placeholder="Ex: Dekens Ruzuba" 
                         value={candidateName} 
                         onChange={e => setCandidateName(e.target.value)} 
                      />
@@ -662,14 +688,20 @@ const Editor = () => {
                      />
                 </div>
                 
-                <div className="mb-6">
-                    <label className="flex items-center gap-3 cursor-pointer p-3 rounded-lg border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors">
-                        <div onClick={() => setIncludeCoverLetter(!includeCoverLetter)} className={`w-5 h-5 rounded border flex items-center justify-center ${includeCoverLetter ? 'bg-indigo-600 border-indigo-600 text-white' : 'border-slate-400'}`}>
+                <div className="mb-6" onClick={() => setIncludeCoverLetter(!includeCoverLetter)}>
+                    <div className="flex items-center gap-3 cursor-pointer p-3 rounded-lg border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors">
+                        <div className={`w-5 h-5 rounded border flex items-center justify-center ${includeCoverLetter ? 'bg-indigo-600 border-indigo-600 text-white' : 'border-slate-400'}`}>
                             {includeCoverLetter && <CheckSquare className="w-3.5 h-3.5" />}
                         </div>
-                        <span className="text-sm font-medium">Générer aussi une lettre de motivation</span>
-                    </label>
+                        <span className="text-sm font-medium select-none">Générer aussi une lettre de motivation</span>
+                    </div>
                 </div>
+                
+                {aiLoading && aiStatus && (
+                    <div className="mb-4 text-center text-sm font-medium text-indigo-600 animate-pulse">
+                        {aiStatus}
+                    </div>
+                )}
 
                 <div className="flex justify-end gap-3">
                     <button onClick={() => setShowAiModal(false)} className="px-4 py-2 text-slate-500 hover:bg-slate-100 rounded-lg">Annuler</button>
