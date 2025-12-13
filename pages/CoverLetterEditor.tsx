@@ -202,27 +202,56 @@ const CoverLetterEditor = () => {
   };
 
   const exportDOCX = async () => {
-      const doc = new Document({
-          sections: [{
-              properties: {},
-              children: [
-                  new Paragraph({ text: data.personalInfo.fullName, heading: HeadingLevel.HEADING_1 }),
-                  new Paragraph({ text: `${data.personalInfo.address} | ${data.personalInfo.email} | ${data.personalInfo.phone}`, spacing: { after: 400 } }),
-                  new Paragraph({ text: new Date().toLocaleDateString(), alignment: AlignmentType.RIGHT, spacing: { after: 200 } }),
-                  new Paragraph({ text: data.recipientInfo.managerName, alignment: AlignmentType.RIGHT }),
-                  new Paragraph({ text: data.recipientInfo.company, alignment: AlignmentType.RIGHT }),
-                  new Paragraph({ text: data.recipientInfo.address, alignment: AlignmentType.RIGHT, spacing: { after: 400 } }),
-                  new Paragraph({ text: `Objet: ${data.content.subject}`, bold: true, spacing: { after: 200 } }),
-                  new Paragraph({ text: data.content.opening, spacing: { after: 200 } }),
-                  ...data.content.body.map(p => new Paragraph({ text: p, spacing: { after: 200 } })),
-                  new Paragraph({ text: data.content.closing, spacing: { after: 400 } }),
-                  new Paragraph({ text: "Cordialement," }),
-                  new Paragraph({ text: data.personalInfo.fullName, bold: true, spacing: { before: 400 } }),
-              ]
-          }]
-      });
-      const blob = await Packer.toBlob(doc);
-      saveAs(blob, `${title}.docx`);
+    const doc = new Document({
+      sections: [{
+        properties: {},
+        children: [
+            // Header (Personal Info) - Left Aligned
+            new Paragraph({ text: data.personalInfo.fullName, heading: HeadingLevel.HEADING_1 }),
+            new Paragraph({ text: data.personalInfo.address }),
+            new Paragraph({ text: `${data.personalInfo.email} | ${data.personalInfo.phone}`, spacing: { after: 400 } }),
+
+            // Date - Right Aligned
+            new Paragraph({ 
+                text: new Date().toLocaleDateString('fr-FR', { year: 'numeric', month: 'long', day: 'numeric' }), 
+                alignment: AlignmentType.RIGHT, 
+                spacing: { after: 400 } 
+            }),
+
+            // Recipient Info - Left Aligned
+            new Paragraph({ text: data.recipientInfo.managerName, bold: true }),
+            new Paragraph({ text: data.recipientInfo.company, bold: true }),
+            new Paragraph({ text: data.recipientInfo.address, spacing: { after: 400 } }),
+
+            // Object Line
+            new Paragraph({ 
+                children: [
+                    new TextRun({ text: "Objet : ", bold: true }),
+                    new TextRun({ text: data.content.subject })
+                ], 
+                spacing: { after: 300 } 
+            }),
+
+            // Opening
+            new Paragraph({ text: data.content.opening, spacing: { after: 200 } }),
+
+            // Body Paragraphs - Justified
+            ...data.content.body.map(p => new Paragraph({ text: p, alignment: AlignmentType.JUSTIFIED, spacing: { after: 200 } })),
+
+            // Closing
+            new Paragraph({ text: data.content.closing, spacing: { before: 200, after: 400 } }),
+
+            // Signature
+            new Paragraph({ text: "Cordialement,", spacing: { after: 200 } }),
+            new Paragraph({ 
+                text: data.signature.text || data.personalInfo.fullName, 
+                bold: true 
+            }),
+        ]
+      }]
+    });
+    const blob = await Packer.toBlob(doc);
+    saveAs(blob, `${title}.docx`);
   };
 
   const getMousePos = (canvas: HTMLCanvasElement, evt: MouseEvent | TouchEvent) => {

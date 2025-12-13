@@ -12,7 +12,7 @@ import {
 } from 'lucide-react';
 import { toJpeg } from 'html-to-image';
 import jsPDF from 'jspdf';
-import { Packer, Document, Paragraph, TextRun, HeadingLevel, AlignmentType, BorderStyle } from 'docx';
+import { Packer, Document, Paragraph, TextRun, HeadingLevel, AlignmentType, BorderStyle, TabStopType, TabStopPosition } from 'docx';
 import saveAs from 'file-saver';
 
 const Editor = () => {
@@ -349,30 +349,133 @@ const Editor = () => {
 
   const exportDOCX = async () => {
     const doc = new Document({
+      styles: {
+        paragraphStyles: [
+            {
+                id: "Heading1",
+                name: "Heading 1",
+                run: { font: "Calibri", size: 28, bold: true, color: "2E74B5" },
+                paragraph: { spacing: { before: 240, after: 120 } },
+            },
+            {
+                id: "Heading2",
+                name: "Heading 2",
+                run: { font: "Calibri", size: 24, bold: true },
+                paragraph: { spacing: { before: 200, after: 100 } },
+            }
+        ]
+      },
       sections: [{
         properties: {},
         children: [
-           new Paragraph({ text: resumeData.personalInfo.fullName.toUpperCase(), heading: HeadingLevel.TITLE, alignment: AlignmentType.CENTER }),
-           new Paragraph({ text: `${resumeData.personalInfo.email} | ${resumeData.personalInfo.phone}`, alignment: AlignmentType.CENTER }),
-           new Paragraph({ text: "" }),
-           new Paragraph({ text: "PROFIL", heading: HeadingLevel.HEADING_1, border: { bottom: { style: BorderStyle.SINGLE, size: 6, space: 1, color: "auto" } } }),
-           new Paragraph({ text: resumeData.personalInfo.summary }),
-           new Paragraph({ text: "" }),
-           new Paragraph({ text: "EXPÉRIENCE", heading: HeadingLevel.HEADING_1, border: { bottom: { style: BorderStyle.SINGLE, size: 6, space: 1, color: "auto" } } }),
+           // Header: Name and Title
+           new Paragraph({ 
+               text: resumeData.personalInfo.fullName.toUpperCase(), 
+               heading: HeadingLevel.TITLE, 
+               alignment: AlignmentType.CENTER,
+               spacing: { after: 100 }
+           }),
+           new Paragraph({ 
+               text: resumeData.personalInfo.jobTitle, 
+               alignment: AlignmentType.CENTER,
+               run: { size: 24, bold: true, color: "555555" },
+               spacing: { after: 200 }
+           }),
+           
+           // Contact Info (One line with separators)
+           new Paragraph({ 
+               alignment: AlignmentType.CENTER,
+               children: [
+                   new TextRun(resumeData.personalInfo.email),
+                   new TextRun(" | "),
+                   new TextRun(resumeData.personalInfo.phone),
+                   new TextRun(" | "),
+                   new TextRun(resumeData.personalInfo.address)
+               ],
+               spacing: { after: 400 }
+           }),
+
+           // Profile Summary
+           ...(resumeData.personalInfo.summary ? [
+                new Paragraph({ 
+                    text: "PROFIL PROFESSIONNEL", 
+                    heading: HeadingLevel.HEADING_1, 
+                    border: { bottom: { style: BorderStyle.SINGLE, size: 6, color: "auto" } } 
+                }),
+                new Paragraph({ 
+                    text: resumeData.personalInfo.summary,
+                    alignment: AlignmentType.JUSTIFIED,
+                    spacing: { after: 300 }
+                })
+           ] : []),
+
+           // Experience Section
+           new Paragraph({ 
+               text: "EXPÉRIENCE PROFESSIONNELLE", 
+               heading: HeadingLevel.HEADING_1, 
+               border: { bottom: { style: BorderStyle.SINGLE, size: 6, color: "auto" } },
+               spacing: { before: 400 }
+           }),
            ...resumeData.experience.flatMap(exp => [
-               new Paragraph({ children: [new TextRun({ text: exp.position, bold: true }), new TextRun({ text: ` | ${exp.company}` })] }),
-               new Paragraph({ text: `${exp.startDate} - ${exp.endDate}`, italics: true }),
-               new Paragraph({ text: exp.description }),
-               new Paragraph({ text: "" }),
+               new Paragraph({ 
+                   children: [
+                       new TextRun({ text: exp.position, bold: true, size: 24 }),
+                       new TextRun({ text: "\t" }),
+                       new TextRun({ text: `${exp.startDate} - ${exp.endDate}`, italics: true })
+                   ],
+                   tabStops: [
+                       { type: TabStopType.RIGHT, position: TabStopPosition.MAX }
+                   ],
+                   heading: HeadingLevel.HEADING_2
+               }),
+               new Paragraph({ 
+                   text: exp.company, 
+                   run: { italics: true, bold: true, color: "444444" },
+                   spacing: { after: 100 } 
+               }),
+               new Paragraph({ 
+                   text: exp.description,
+                   alignment: AlignmentType.JUSTIFIED,
+                   spacing: { after: 300 }
+               }),
            ]),
-           new Paragraph({ text: "FORMATION", heading: HeadingLevel.HEADING_1, border: { bottom: { style: BorderStyle.SINGLE, size: 6, space: 1, color: "auto" } } }),
+
+           // Education Section
+           new Paragraph({ 
+               text: "FORMATION", 
+               heading: HeadingLevel.HEADING_1, 
+               border: { bottom: { style: BorderStyle.SINGLE, size: 6, color: "auto" } },
+               spacing: { before: 400 }
+           }),
            ...resumeData.education.flatMap(edu => [
-               new Paragraph({ children: [new TextRun({ text: edu.institution, bold: true }), new TextRun({ text: ` - ${edu.degree}` })] }),
-               new Paragraph({ text: `${edu.field} | ${edu.startDate} - ${edu.endDate}`, italics: true }),
-               new Paragraph({ text: "" }),
+               new Paragraph({ 
+                   children: [
+                       new TextRun({ text: edu.institution, bold: true, size: 24 }),
+                       new TextRun({ text: "\t" }),
+                       new TextRun({ text: `${edu.startDate} - ${edu.endDate}`, italics: true })
+                   ],
+                   tabStops: [
+                       { type: TabStopType.RIGHT, position: TabStopPosition.MAX }
+                   ],
+                   heading: HeadingLevel.HEADING_2
+               }),
+               new Paragraph({ 
+                   text: `${edu.degree} - ${edu.field}`,
+                   spacing: { after: 300 }
+               }),
            ]),
-           new Paragraph({ text: "COMPÉTENCES", heading: HeadingLevel.HEADING_1, border: { bottom: { style: BorderStyle.SINGLE, size: 6, space: 1, color: "auto" } } }),
-           new Paragraph({ text: resumeData.skills.join(" • ") })
+
+           // Skills Section
+           new Paragraph({ 
+               text: "COMPÉTENCES", 
+               heading: HeadingLevel.HEADING_1, 
+               border: { bottom: { style: BorderStyle.SINGLE, size: 6, color: "auto" } },
+               spacing: { before: 400 }
+           }),
+           new Paragraph({ 
+               text: resumeData.skills.join(" • "),
+               spacing: { after: 200 }
+           })
         ]
       }]
     });
