@@ -27,11 +27,17 @@ const ResumePreview = forwardRef<HTMLDivElement, Props>(({ data, template }, ref
 });
 
 // Helper for photo
+// CRITICAL: Added crossOrigin="anonymous" to prevent 'Tainted Canvas' errors during PDF export
 const ProfilePhoto = ({ url, className = "" }: { url?: string, className?: string }) => {
     if (!url) return null;
     return (
         <div className={`overflow-hidden shrink-0 ${className}`}>
-            <img src={url} alt="Profile" className="w-full h-full object-cover" />
+            <img 
+                src={url} 
+                alt="Profile" 
+                crossOrigin="anonymous" 
+                className="w-full h-full object-cover" 
+            />
         </div>
     );
 };
@@ -814,7 +820,7 @@ const SwissTemplate = forwardRef<HTMLDivElement, { data: ResumeData }>(({ data }
         {/* Photo Absolute */}
         {data.personalInfo.photoUrl && (
             <div className="absolute top-20 right-16 w-32 h-32 border-4 border-black bg-white">
-                <img src={data.personalInfo.photoUrl} alt="" className="w-full h-full object-cover grayscale contrast-125" />
+                <img src={data.personalInfo.photoUrl} alt="" crossOrigin="anonymous" className="w-full h-full object-cover grayscale contrast-125" />
             </div>
         )}
     </div>

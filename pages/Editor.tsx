@@ -10,7 +10,7 @@ import ResumePreview from '../components/ResumePreview';
 import { 
   Save, ArrowLeft, Wand2, Download, Eye, Layout, Plus, Trash, AlertTriangle, Mail, Loader2, Upload, Edit
 } from 'lucide-react';
-import { toPng } from 'html-to-image';
+import { toJpeg } from 'html-to-image';
 import jsPDF from 'jspdf';
 import { Packer, Document, Paragraph, TextRun, HeadingLevel, AlignmentType, BorderStyle } from 'docx';
 import saveAs from 'file-saver';
@@ -232,59 +232,108 @@ const Editor = () => {
     }
   };
 
-  // --- EXPORT PDF FIXED with html-to-image ---
+  // --- EXPORT PDF ROBUST FIX (CLONE & CAPTURE) ---
   const exportPDF = async () => {
     if (!previewRef.current) return;
     setLoading(true);
 
     try {
         const element = previewRef.current;
+        await document.fonts.ready;
+
+        // 1. CLONE
+        // We clone the node to isolate it from the scaled preview container.
+        const clone = element.cloneNode(true) as HTMLElement;
+
+        // 2. SETUP CLONE STYLES
+        // Move it off-screen but ensure it's rendered in the DOM
+        const a4WidthPx = 794; // approx 210mm at 96dpi
         
-        // We use html-to-image which is much better at capturing modern CSS (flexbox, grid, shadows)
-        // We pass a style override to ensure we capture it at 100% scale (removing the preview zoom)
-        const dataUrl = await toPng(element, {
-            quality: 0.95,
-            pixelRatio: 2, // High resolution
-            style: {
-                transform: 'scale(1)', // Force 1:1 scale
-                transformOrigin: 'top left',
-                width: '794px', // Force A4 Width
-                height: 'auto', // Allow height to flow
-                minHeight: '1123px' // Min A4 Height
-            },
+        clone.style.position = 'fixed';
+        clone.style.top = '0px'; // Changed from -10000px to avoid rendering optimization issues
+        clone.style.left = '0px';
+        clone.style.zIndex = '-9999';
+        clone.style.width = `${a4WidthPx}px`;
+        clone.style.height = 'auto'; 
+        clone.style.minHeight = '1123px'; // approx 297mm
+        clone.style.transform = 'none'; // Critical: Remove any scale
+        clone.style.margin = '0';
+        clone.style.padding = '0'; 
+        clone.style.backgroundColor = '#ffffff'; // Force white background for JPEG
+        
+        // 3. APPEND TO BODY
+        document.body.appendChild(clone);
+
+        // 4. WAIT FOR IMAGES
+        // Ensure any images in the clone are loaded before capturing
+        const images = Array.from(clone.getElementsByTagName('img'));
+        await Promise.all(images.map(img => {
+            if (img.complete) return Promise.resolve();
+            return new Promise(resolve => {
+                img.onload = resolve;
+                img.onerror = resolve; // Continue even if image fails
+            });
+        }));
+
+        // Small delay to ensure layout is settled and styles applied
+        await new Promise(resolve => setTimeout(resolve, 500));
+
+        // 5. CAPTURE AS JPEG (Smaller size, no transparency issues)
+        const dataUrl = await toJpeg(clone, {
+            quality: 0.8, // 80% quality is sufficient for documents and reduces file size significantly
+            pixelRatio: 2, // Retain high resolution for text crispness
+            backgroundColor: '#ffffff',
+            width: a4WidthPx,
+            height: clone.scrollHeight, // Capture full height of content
             cacheBust: true,
+            filter: (node) => {
+              // Ignore external stylesheets to prevent CORS errors
+              if (node.tagName === 'LINK' && (node as HTMLLinkElement).href.includes('fonts.googleapis')) {
+                return false;
+              }
+              return true;
+            },
         });
 
+        // 6. CLEANUP
+        document.body.removeChild(clone);
+        
+        if (!dataUrl || dataUrl.length < 1000) {
+            throw new Error("Generation failed - Image data too short.");
+        }
+
+        // 7. GENERATE PDF
         const pdf = new jsPDF({
             orientation: 'portrait',
             unit: 'mm',
-            format: 'a4'
+            format: 'a4',
+            compress: true
         });
 
         const pdfWidth = 210;
         const pdfHeight = 297;
         
-        // Load image to get dimensions
         const imgProps = pdf.getImageProperties(dataUrl);
         const imgHeight = (imgProps.height * pdfWidth) / imgProps.width;
 
-        // Smart Single Page logic: 
-        // If content is just a tiny bit over A4 (e.g. 20mm), force it to fit one page.
-        // This avoids the "single line on second page" annoyance.
-        if (imgHeight <= pdfHeight + 20) {
-             pdf.addImage(dataUrl, 'PNG', 0, 0, pdfWidth, pdfHeight); 
+        // Use 'FAST' compression for addImage
+        // Single page
+        if (imgHeight <= pdfHeight + 5) {
+             pdf.addImage(dataUrl, 'JPEG', 0, 0, pdfWidth, imgHeight, undefined, 'FAST'); 
         } else {
-             // Standard multi-page split
+             // Multi-page splitting
              let heightLeft = imgHeight;
              let position = 0;
+             let page = 0;
              
-             pdf.addImage(dataUrl, 'PNG', 0, position, pdfWidth, imgHeight);
+             pdf.addImage(dataUrl, 'JPEG', 0, position, pdfWidth, imgHeight, undefined, 'FAST');
              heightLeft -= pdfHeight;
 
              while (heightLeft > 0) {
-                position = heightLeft - imgHeight;
+                page++;
+                position = - (page * pdfHeight); // Move image up
                 pdf.addPage();
-                pdf.addImage(dataUrl, 'PNG', 0, position, pdfWidth, imgHeight);
+                pdf.addImage(dataUrl, 'JPEG', 0, position, pdfWidth, imgHeight, undefined, 'FAST');
                 heightLeft -= pdfHeight;
              }
         }
@@ -292,13 +341,12 @@ const Editor = () => {
         pdf.save(`${title.replace(/\s+/g, '_')}.pdf`);
     } catch (err) {
         console.error("Export failed", err);
-        alert("Erreur export PDF. Vérifiez votre connexion.");
+        alert("Erreur export PDF. Veuillez réessayer.");
     } finally {
         setLoading(false);
     }
   };
 
-  // ... (DOCX Export remains same)
   const exportDOCX = async () => {
     const doc = new Document({
       sections: [{
@@ -428,10 +476,8 @@ const Editor = () => {
              )}
         </div>
 
-        {/* Preview Column - RESPONSIVE CONTAINER WITH DYNAMIC HEIGHT */}
+        {/* Preview Column */}
         <div ref={containerRef} className={`w-full md:w-7/12 lg:w-7/12 bg-slate-200 dark:bg-slate-950 overflow-y-auto relative flex flex-col items-center py-8 ${mobileView === 'editor' ? 'hidden md:flex' : 'flex'}`}>
-             
-             {/* Wrapper that scales its size to prevent ghost scrollbars */}
              <div 
                 style={{ 
                     width: `${794 * previewScale}px`, 
@@ -439,7 +485,6 @@ const Editor = () => {
                 }} 
                 className="relative shadow-2xl transition-all duration-200 ease-out shrink-0"
              >
-                 {/* Scaled Content using transform-origin top-left */}
                  <div 
                     className="origin-top-left bg-white"
                     style={{ 
@@ -453,8 +498,6 @@ const Editor = () => {
                     </div>
                  </div>
              </div>
-             
-             {/* Scale Indicator */}
              <div className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-black/50 backdrop-blur text-white px-3 py-1 rounded-full text-xs pointer-events-none z-10">
                  Zoom: {Math.round(previewScale * 100)}%
              </div>
@@ -465,7 +508,6 @@ const Editor = () => {
         </div>
       </div>
       
-      {/* Modals reuse */}
       {showAiModal && <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
             <div className="bg-white dark:bg-slate-800 p-6 rounded-xl w-full max-w-lg">
                 <h3 className="text-xl font-bold mb-4">Générer avec IA</h3>
@@ -492,7 +534,6 @@ const Editor = () => {
   );
 };
 
-// Simple helpers
 const InputField = ({ label, value, onChange, type="text" }: any) => <div className="flex flex-col gap-1"><label className="text-xs font-semibold text-slate-500 uppercase">{label}</label><input type={type} value={value||''} onChange={e=>onChange(e.target.value)} className="px-3 py-2 border rounded-lg bg-transparent"/></div>;
 const TextAreaField = ({ label, value, onChange }: any) => <div className="flex flex-col gap-1"><label className="text-xs font-semibold text-slate-500 uppercase">{label}</label><textarea rows={4} value={value||''} onChange={e=>onChange(e.target.value)} className="px-3 py-2 border rounded-lg bg-transparent resize-none"/></div>;
 

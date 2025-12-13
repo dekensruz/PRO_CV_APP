@@ -8,7 +8,7 @@ import { CoverLetterData, TemplateType, ResumeData } from '../types';
 import { INITIAL_COVER_LETTER_STATE, INITIAL_RESUME_STATE, TRANSLATIONS } from '../constants';
 import CoverLetterPreview from '../components/CoverLetterPreview';
 import { Save, ArrowLeft, Download, Upload, Eraser, Pen, Type, Loader2, Layout, Check, Eye, Edit, Wand2 } from 'lucide-react';
-import { toPng } from 'html-to-image';
+import { toJpeg } from 'html-to-image';
 import jsPDF from 'jspdf';
 import { Document, Packer, Paragraph, AlignmentType, TextRun, HeadingLevel } from 'docx';
 import saveAs from 'file-saver';
@@ -102,61 +102,105 @@ const CoverLetterEditor = () => {
       finally { setAiLoading(false); }
   };
 
-  // --- Export PDF (Robust) ---
+  // --- Export PDF ROBUST FIX (CLONE & CAPTURE) ---
   const exportPDF = async () => {
       if (!previewRef.current) return;
       setLoading(true);
       
       try {
           const element = previewRef.current;
-          
-          const dataUrl = await toPng(element, { 
-              quality: 0.95,
+          await document.fonts.ready;
+
+          // 1. Clone element to avoid interference from scaling/responsive layout
+          const clone = element.cloneNode(true) as HTMLElement;
+
+          // 2. Position clone off-screen but strictly sized A4
+          const a4WidthPx = 794;
+          clone.style.position = 'fixed';
+          clone.style.top = '0px'; // Changed from -10000px
+          clone.style.left = '0px';
+          clone.style.zIndex = '-9999';
+          clone.style.width = `${a4WidthPx}px`;
+          clone.style.height = 'auto';
+          clone.style.minHeight = '1123px';
+          clone.style.transform = 'none'; // Ensure no scale
+          clone.style.margin = '0';
+          clone.style.padding = '0';
+          clone.style.backgroundColor = '#ffffff'; // Force white background
+
+          // 3. Append to body
+          document.body.appendChild(clone);
+
+          // 4. Wait for any images in the clone
+          const images = Array.from(clone.getElementsByTagName('img'));
+          await Promise.all(images.map(img => {
+              if (img.complete) return Promise.resolve();
+              return new Promise(resolve => {
+                  img.onload = resolve;
+                  img.onerror = resolve; 
+              });
+          }));
+
+          // Allow layout to settle
+          await new Promise(resolve => setTimeout(resolve, 500));
+
+          // 5. Capture AS JPEG
+          const dataUrl = await toJpeg(clone, { 
+              quality: 0.8, // Good compression
               pixelRatio: 2,
+              backgroundColor: '#ffffff',
               cacheBust: true,
-              style: {
-                transform: 'scale(1)',
-                transformOrigin: 'top left',
-                width: '794px',
-                height: 'auto',
-                minHeight: '1123px'
+              width: a4WidthPx,
+              height: clone.scrollHeight,
+              filter: (node) => {
+                if (node.tagName === 'LINK' && (node as HTMLLinkElement).href.includes('fonts.googleapis')) {
+                  return false;
+                }
+                return true;
               }
           });
           
-          const pdf = new jsPDF('p', 'mm', 'a4');
+          // 6. Cleanup
+          document.body.removeChild(clone);
+
+          if (!dataUrl || dataUrl.length < 1000) {
+              throw new Error("Export failed - Image data invalid.");
+          }
+
+          const pdf = new jsPDF('p', 'mm', 'a4', true);
           const pdfWidth = 210;
           const pdfHeight = 297;
           
           const imgProps = pdf.getImageProperties(dataUrl);
           const imgHeight = (imgProps.height * pdfWidth) / imgProps.width;
           
-          // Fit single page if close to height limit
-          if (imgHeight <= pdfHeight + 20) {
-               pdf.addImage(dataUrl, 'PNG', 0, 0, pdfWidth, pdfHeight);
+          // Use FAST compression
+          if (imgHeight <= pdfHeight + 5) {
+               pdf.addImage(dataUrl, 'JPEG', 0, 0, pdfWidth, imgHeight, undefined, 'FAST');
           } else {
-               // Multi page support
                let heightLeft = imgHeight;
                let position = 0;
+               let page = 0;
                
-               pdf.addImage(dataUrl, 'PNG', 0, position, pdfWidth, imgHeight);
+               pdf.addImage(dataUrl, 'JPEG', 0, position, pdfWidth, imgHeight, undefined, 'FAST');
                heightLeft -= pdfHeight;
 
                while (heightLeft > 0) {
-                  position = heightLeft - imgHeight;
+                  page++;
+                  position = - (page * pdfHeight);
                   pdf.addPage();
-                  pdf.addImage(dataUrl, 'PNG', 0, position, pdfWidth, imgHeight);
+                  pdf.addImage(dataUrl, 'JPEG', 0, position, pdfWidth, imgHeight, undefined, 'FAST');
                   heightLeft -= pdfHeight;
                }
           }
           
           pdf.save(`${title}.pdf`);
-      } catch(e) { console.error(e); } 
+      } catch(e) { console.error(e); alert("Erreur d'exportation PDF"); } 
       finally { 
           setLoading(false); 
       }
   };
 
-  // --- Export Word ---
   const exportDOCX = async () => {
       const doc = new Document({
           sections: [{
@@ -181,7 +225,6 @@ const CoverLetterEditor = () => {
       saveAs(blob, `${title}.docx`);
   };
 
-  // Canvas Handlers
   const getMousePos = (canvas: HTMLCanvasElement, evt: MouseEvent | TouchEvent) => {
       const rect = canvas.getBoundingClientRect();
       const scaleX = canvas.width / rect.width;
@@ -283,7 +326,6 @@ const CoverLetterEditor = () => {
 
              {/* Preview Panel - RESPONSIVE CONTAINER WITH DYNAMIC HEIGHT */}
              <div ref={containerRef} className={`w-full md:w-7/12 lg:w-7/12 bg-slate-200 dark:bg-slate-950 overflow-y-auto relative flex flex-col items-center py-8 ${mobileView === 'editor' ? 'hidden md:flex' : 'flex'}`}>
-                 
                  <div 
                     style={{ 
                         width: `${794 * previewScale}px`, 
@@ -304,7 +346,6 @@ const CoverLetterEditor = () => {
                         </div>
                      </div>
                  </div>
-                 
                  <div className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-black/50 backdrop-blur text-white px-3 py-1 rounded-full text-xs pointer-events-none z-10">
                      Zoom: {Math.round(previewScale * 100)}%
                  </div>
@@ -343,5 +384,8 @@ const CoverLetterEditor = () => {
     </div>
   );
 };
+
+const InputField = ({ label, value, onChange, type="text" }: any) => <div className="flex flex-col gap-1"><label className="text-xs font-semibold text-slate-500 uppercase">{label}</label><input type={type} value={value||''} onChange={e=>onChange(e.target.value)} className="px-3 py-2 border rounded-lg bg-transparent"/></div>;
+const TextAreaField = ({ label, value, onChange }: any) => <div className="flex flex-col gap-1"><label className="text-xs font-semibold text-slate-500 uppercase">{label}</label><textarea rows={4} value={value||''} onChange={e=>onChange(e.target.value)} className="px-3 py-2 border rounded-lg bg-transparent resize-none"/></div>;
 
 export default CoverLetterEditor;

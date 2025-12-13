@@ -123,10 +123,20 @@ const LetterBody = ({ data, align }: { data: CoverLetterData, align: 'left' | 'j
                 
                 <div className="h-24 mb-2">
                     {data.signature.type === 'image' && data.signature.imageUrl && (
-                        <img src={data.signature.imageUrl} alt="Signature" className="h-full object-contain" />
+                        <img 
+                            src={data.signature.imageUrl} 
+                            alt="Signature" 
+                            crossOrigin="anonymous"
+                            className="h-full object-contain" 
+                        />
                     )}
                     {data.signature.type === 'draw' && data.signature.imageUrl && (
-                        <img src={data.signature.imageUrl} alt="Signature" className="h-full object-contain" />
+                        <img 
+                            src={data.signature.imageUrl} 
+                            alt="Signature" 
+                            crossOrigin="anonymous"
+                            className="h-full object-contain" 
+                        />
                     )}
                     {data.signature.type === 'text' && (
                         <div className="font-cursive text-3xl text-slate-800 italic" style={{ fontFamily: 'Brush Script MT, cursive' }}>
