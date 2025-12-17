@@ -4,14 +4,16 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { supabase } from '../services/supabaseClient';
 import { generateCoverLetter } from '../services/geminiService';
 import { useAuth, useApp } from '../App';
-import { CoverLetterData, TemplateType, ResumeData } from '../types';
-import { INITIAL_COVER_LETTER_STATE, INITIAL_RESUME_STATE, TRANSLATIONS } from '../constants';
+import { CoverLetterData, TemplateType, ResumeData, DesignSettings } from '../types';
+import { INITIAL_COVER_LETTER_STATE, INITIAL_RESUME_STATE, TRANSLATIONS, DEFAULT_DESIGN } from '../constants';
 import CoverLetterPreview from '../components/CoverLetterPreview';
-import { Save, ArrowLeft, Download, Upload, Eraser, Pen, Type, Loader2, Layout, Check, Eye, Edit, Wand2 } from 'lucide-react';
-import { toJpeg } from 'html-to-image';
+import { Save, ArrowLeft, Download, Upload, Eraser, Pen, Type, Loader2, Layout, Wand2, Eye, Edit, Palette, AlignJustify, Circle, CheckSquare } from 'lucide-react';
+import { toPng } from 'html-to-image';
 import jsPDF from 'jspdf';
 import { Document, Packer, Paragraph, AlignmentType, TextRun, HeadingLevel } from 'docx';
 import saveAs from 'file-saver';
+
+const COLORS = ['#0ea5e9', '#2563eb', '#4f46e5', '#7c3aed', '#db2777', '#e11d48', '#ea580c', '#059669', '#0d9488', '#1f2937'];
 
 const CoverLetterEditor = () => {
   const { id } = useParams();
@@ -23,7 +25,7 @@ const CoverLetterEditor = () => {
   const [data, setData] = useState<CoverLetterData>(INITIAL_COVER_LETTER_STATE);
   const [title, setTitle] = useState('Ma Lettre');
   const [loading, setLoading] = useState(false);
-  const [activeTab, setActiveTab] = useState<'content' | 'recipient' | 'signature'>('content');
+  const [activeTab, setActiveTab] = useState<'content' | 'recipient' | 'signature' | 'design'>('content');
   const [template, setTemplate] = useState<TemplateType>('modern');
   const [showTemplateModal, setShowTemplateModal] = useState(false);
   const [showAiModal, setShowAiModal] = useState(false);
@@ -58,7 +60,7 @@ const CoverLetterEditor = () => {
   useEffect(() => {
     if (id) loadLetter(id);
     else if (user?.user_metadata?.full_name) {
-        setData(prev => ({ ...prev, personalInfo: { ...prev.personalInfo, fullName: user.user_metadata.full_name } }));
+        setData(prev => ({ ...prev, personalInfo: { ...prev.personalInfo, fullName: user.user_metadata.full_name }, design: DEFAULT_DESIGN }));
     }
   }, [id, user]);
 
@@ -66,7 +68,7 @@ const CoverLetterEditor = () => {
     setLoading(true);
     const { data: letter } = await supabase.from('cover_letters').select('*').eq('id', letterId).single();
     if (letter) {
-        setData(letter.content);
+        setData({...letter.content, design: letter.content.design || DEFAULT_DESIGN});
         setTitle(letter.title);
         setTemplate(letter.template_id || 'modern');
     }
@@ -103,7 +105,7 @@ const CoverLetterEditor = () => {
   };
 
   // --- Export PDF ROBUST FIX (CLONE & CAPTURE) ---
-  const exportPDF = async () => {
+  const exportPDF = async (forceOnePage = false) => {
       if (!previewRef.current) return;
       setLoading(true);
       
@@ -114,10 +116,16 @@ const CoverLetterEditor = () => {
           // 1. Clone element to avoid interference from scaling/responsive layout
           const clone = element.cloneNode(true) as HTMLElement;
 
+          // Remove the Page Break Marker from the clone
+          const pageMarker = clone.querySelector('.page-break-marker');
+          if (pageMarker) {
+              pageMarker.remove();
+          }
+
           // 2. Position clone off-screen but strictly sized A4
           const a4WidthPx = 794;
           clone.style.position = 'fixed';
-          clone.style.top = '0px'; // Changed from -10000px
+          clone.style.top = '0px'; 
           clone.style.left = '0px';
           clone.style.zIndex = '-9999';
           clone.style.width = `${a4WidthPx}px`;
@@ -144,10 +152,10 @@ const CoverLetterEditor = () => {
           // Allow layout to settle
           await new Promise(resolve => setTimeout(resolve, 500));
 
-          // 5. Capture AS JPEG
-          const dataUrl = await toJpeg(clone, { 
-              quality: 0.8, // Good compression
-              pixelRatio: 2,
+          // 5. Capture AS PNG (Higher Quality)
+          const dataUrl = await toPng(clone, { 
+              quality: 1.0, 
+              pixelRatio: 3, // Increased for sharpness
               backgroundColor: '#ffffff',
               cacheBust: true,
               width: a4WidthPx,
@@ -174,24 +182,27 @@ const CoverLetterEditor = () => {
           const imgProps = pdf.getImageProperties(dataUrl);
           const imgHeight = (imgProps.height * pdfWidth) / imgProps.width;
           
-          // Use FAST compression
-          if (imgHeight <= pdfHeight + 5) {
-               pdf.addImage(dataUrl, 'JPEG', 0, 0, pdfWidth, imgHeight, undefined, 'FAST');
+          if (forceOnePage) {
+              pdf.addImage(dataUrl, 'PNG', 0, 0, pdfWidth, Math.min(imgHeight, pdfHeight), undefined, 'FAST');
           } else {
-               let heightLeft = imgHeight;
-               let position = 0;
-               let page = 0;
-               
-               pdf.addImage(dataUrl, 'JPEG', 0, position, pdfWidth, imgHeight, undefined, 'FAST');
-               heightLeft -= pdfHeight;
+               if (imgHeight <= pdfHeight + 5) {
+                   pdf.addImage(dataUrl, 'PNG', 0, 0, pdfWidth, imgHeight, undefined, 'FAST');
+              } else {
+                   let heightLeft = imgHeight;
+                   let position = 0;
+                   let page = 0;
+                   
+                   pdf.addImage(dataUrl, 'PNG', 0, position, pdfWidth, imgHeight, undefined, 'FAST');
+                   heightLeft -= pdfHeight;
 
-               while (heightLeft > 0) {
-                  page++;
-                  position = - (page * pdfHeight);
-                  pdf.addPage();
-                  pdf.addImage(dataUrl, 'JPEG', 0, position, pdfWidth, imgHeight, undefined, 'FAST');
-                  heightLeft -= pdfHeight;
-               }
+                   while (heightLeft > 0) {
+                      page++;
+                      position = - (page * pdfHeight);
+                      pdf.addPage();
+                      pdf.addImage(dataUrl, 'PNG', 0, position, pdfWidth, imgHeight, undefined, 'FAST');
+                      heightLeft -= pdfHeight;
+                   }
+              }
           }
           
           pdf.save(`${title}.pdf`);
@@ -295,6 +306,7 @@ const CoverLetterEditor = () => {
           setData(p => ({ ...p, signature: { ...p.signature, type: 'image', imageUrl: data.publicUrl } }));
       }
   };
+  const updateDesign = (f: keyof DesignSettings, v: string) => setData(p => ({...p, design: {...(p.design || DEFAULT_DESIGN), [f]: v}}));
 
   return (
     <div className="flex flex-col h-screen bg-slate-100 dark:bg-slate-900">
@@ -307,16 +319,22 @@ const CoverLetterEditor = () => {
                  <button onClick={() => setShowTemplateModal(true)} className="flex items-center gap-2 px-3 py-1.5 bg-slate-100 rounded-lg text-sm font-medium hover:bg-slate-200 mr-2"><Layout className="w-4 h-4" /><span className="hidden md:inline">Modèle</span></button>
                  <button onClick={() => setShowAiModal(true)} className="flex items-center gap-2 px-2 md:px-3 py-1.5 bg-indigo-100 text-indigo-700 rounded-lg text-xs md:text-sm font-medium hover:bg-indigo-200 mr-2"><Wand2 className="w-4 h-4" /><span className="hidden md:inline">IA</span></button>
                  <button onClick={exportDOCX} className="p-2 hover:bg-slate-100 rounded text-blue-600 font-bold" title="Word">W</button>
-                 <button onClick={exportPDF} className="p-2 hover:bg-slate-100 rounded text-red-600" title="PDF"><Download className="w-5 h-5" /></button>
+                 <button onClick={() => {
+                     if (window.confirm("Voulez-vous adapter le contenu à une seule page ? (Auto-Fit)")) {
+                        exportPDF(true);
+                     } else {
+                        exportPDF(false);
+                     }
+                 }} className="p-2 hover:bg-slate-100 rounded text-red-600" title="PDF (Auto-fit)"><Download className="w-5 h-5" /></button>
                  <button onClick={saveLetter} className="flex items-center gap-2 bg-primary-600 text-white px-4 py-2 rounded-lg hover:bg-primary-700">{loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}<span className="hidden sm:inline">Sauvegarder</span></button>
              </div>
         </div>
 
         <div className="flex flex-1 overflow-hidden relative">
              <div className={`w-full md:w-5/12 p-6 bg-white dark:bg-slate-800 overflow-y-auto border-r border-slate-200 h-full ${mobileView === 'preview' ? 'hidden md:block' : 'block'}`}>
-                 <div className="flex space-x-2 mb-6 border-b pb-2">
-                     {['content', 'recipient', 'signature'].map(tab => (
-                         <button key={tab} onClick={() => setActiveTab(tab as any)} className={`px-4 py-2 rounded text-sm font-medium transition-colors ${activeTab === tab ? 'bg-primary-100 text-primary-700' : 'text-slate-500 hover:bg-slate-100'}`}>{tab.charAt(0).toUpperCase() + tab.slice(1)}</button>
+                 <div className="flex space-x-1 mb-6 border-b pb-2 bg-slate-100 dark:bg-slate-900/50 p-1 rounded-lg overflow-x-auto">
+                     {['content', 'recipient', 'signature', 'design'].map(tab => (
+                         <button key={tab} onClick={() => setActiveTab(tab as any)} className={`px-4 py-2 rounded text-sm font-medium transition-colors ${activeTab === tab ? 'bg-white shadow text-primary-600' : 'text-slate-500 hover:text-slate-700'}`}>{tab.charAt(0).toUpperCase() + tab.slice(1)}</button>
                      ))}
                  </div>
                  {activeTab === 'content' && (
@@ -351,9 +369,86 @@ const CoverLetterEditor = () => {
                          {data.signature.type === 'image' && <input type="file" accept="image/*" onChange={handleImageUpload} className="w-full" />}
                      </div>
                  )}
+                 {activeTab === 'design' && (
+                    <div className="space-y-8 pb-20 md:pb-0">
+                        <div>
+                            <label className="flex items-center gap-2 text-sm font-bold text-slate-700 dark:text-slate-300 mb-3"><Palette className="w-4 h-4"/> Couleur Principale</label>
+                            <div className="flex flex-wrap gap-2">
+                                {COLORS.map(c => (
+                                    <button 
+                                        key={c} 
+                                        onClick={() => updateDesign('color', c)} 
+                                        className={`w-8 h-8 rounded-full border-2 transition-transform hover:scale-110 ${data.design?.color === c ? 'border-slate-900 dark:border-white scale-110' : 'border-transparent'}`}
+                                        style={{ backgroundColor: c }}
+                                    />
+                                ))}
+                            </div>
+                        </div>
+                        
+                        <div>
+                            <label className="flex items-center gap-2 text-sm font-bold text-slate-700 dark:text-slate-300 mb-3"><Type className="w-4 h-4"/> Police</label>
+                            <div className="grid grid-cols-3 gap-2">
+                                {['sans', 'serif', 'mono'].map(f => (
+                                    <button 
+                                        key={f}
+                                        onClick={() => updateDesign('font', f)}
+                                        className={`py-2 px-3 border rounded-lg text-sm capitalize ${data.design?.font === f ? 'bg-primary-100 border-primary-500 text-primary-700' : 'border-slate-200 dark:border-slate-700'}`}
+                                    >
+                                        {f}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+
+                         <div>
+                            <label className="flex items-center gap-2 text-sm font-bold text-slate-700 dark:text-slate-300 mb-3"><Circle className="w-4 h-4"/> Formes</label>
+                            <div className="grid grid-cols-3 gap-2">
+                                 {['none', 'medium', 'full'].map(r => (
+                                    <button 
+                                        key={r}
+                                        onClick={() => updateDesign('borderRadius', r)}
+                                        className={`py-2 px-3 border rounded-lg text-sm capitalize ${data.design?.borderRadius === r ? 'bg-primary-100 border-primary-500 text-primary-700' : 'border-slate-200 dark:border-slate-700'}`}
+                                    >
+                                        {r === 'none' ? 'Carré' : r === 'medium' ? 'Arrondi' : 'Rond'}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+
+                        <div>
+                            <label className="flex items-center gap-2 text-sm font-bold text-slate-700 dark:text-slate-300 mb-3"><AlignJustify className="w-4 h-4"/> Espacement</label>
+                            <div className="grid grid-cols-3 gap-2">
+                                 {['compact', 'normal', 'spacious'].map(s => (
+                                    <button 
+                                        key={s}
+                                        onClick={() => updateDesign('spacing', s)}
+                                        className={`py-2 px-3 border rounded-lg text-sm capitalize ${data.design?.spacing === s ? 'bg-primary-100 border-primary-500 text-primary-700' : 'border-slate-200 dark:border-slate-700'}`}
+                                    >
+                                        {s}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+
+                        <div>
+                            <label className="flex items-center gap-2 text-sm font-bold text-slate-700 dark:text-slate-300 mb-3">Taille du Texte</label>
+                             <div className="grid grid-cols-3 gap-2">
+                                 {['small', 'medium', 'large'].map(s => (
+                                    <button 
+                                        key={s}
+                                        onClick={() => updateDesign('fontSize', s)}
+                                        className={`py-2 px-3 border rounded-lg text-sm capitalize ${data.design?.fontSize === s ? 'bg-primary-100 border-primary-500 text-primary-700' : 'border-slate-200 dark:border-slate-700'}`}
+                                    >
+                                        {s}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+                    </div>
+                 )}
              </div>
 
-             {/* Preview Panel - RESPONSIVE CONTAINER WITH DYNAMIC HEIGHT */}
+             {/* Preview Panel */}
              <div ref={containerRef} className={`w-full md:w-7/12 lg:w-7/12 bg-slate-200 dark:bg-slate-950 overflow-y-auto relative flex flex-col items-center py-8 ${mobileView === 'editor' ? 'hidden md:flex' : 'flex'}`}>
                  <div 
                     style={{ 
@@ -370,7 +465,11 @@ const CoverLetterEditor = () => {
                             minHeight: '1123px'
                         }}
                      >
-                        <div ref={previewRef} className="w-full h-full">
+                        <div ref={previewRef} className="w-full h-full relative">
+                            {/* Visual Limit Indicator */}
+                            <div className="absolute top-[1123px] left-0 w-full border-b-2 border-dashed border-red-500 z-50 pointer-events-none opacity-50 flex items-end justify-end page-break-marker">
+                                <span className="bg-red-500 text-white text-xs px-2 py-0.5 rounded-t">Fin de Page A4 (Ne sera pas imprimé)</span>
+                            </div>
                             <CoverLetterPreview data={data} template={template} />
                         </div>
                      </div>
@@ -391,8 +490,8 @@ const CoverLetterEditor = () => {
                 <div className="bg-white dark:bg-slate-800 p-6 rounded-xl w-full max-w-4xl h-[80vh] flex flex-col">
                     <div className="flex justify-between mb-4"><h3 className="text-xl font-bold">Modèles</h3><button onClick={() => setShowTemplateModal(false)}>X</button></div>
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-4 overflow-y-auto">
-                        {['modern', 'classic', 'minimalist', 'creative', 'tech', 'executive'].map(t => (
-                            <button key={t} onClick={() => { setTemplate(t as TemplateType); setShowTemplateModal(false); }} className={`p-4 border rounded ${template === t ? 'border-primary-500 bg-primary-50' : ''}`}>{t}</button>
+                        {['modern', 'classic', 'minimalist', 'creative', 'tech', 'executive', 'neo', 'bold', 'symmetry', 'elegant'].map(t => (
+                            <button key={t} onClick={() => { setTemplate(t as TemplateType); setShowTemplateModal(false); }} className={`p-4 border rounded ${template === t ? 'border-primary-500 bg-primary-50' : ''} uppercase font-bold text-xs`}>{t}</button>
                         ))}
                     </div>
                 </div>
@@ -413,8 +512,5 @@ const CoverLetterEditor = () => {
     </div>
   );
 };
-
-const InputField = ({ label, value, onChange, type="text" }: any) => <div className="flex flex-col gap-1"><label className="text-xs font-semibold text-slate-500 uppercase">{label}</label><input type={type} value={value||''} onChange={e=>onChange(e.target.value)} className="px-3 py-2 border rounded-lg bg-transparent"/></div>;
-const TextAreaField = ({ label, value, onChange }: any) => <div className="flex flex-col gap-1"><label className="text-xs font-semibold text-slate-500 uppercase">{label}</label><textarea rows={4} value={value||''} onChange={e=>onChange(e.target.value)} className="px-3 py-2 border rounded-lg bg-transparent resize-none"/></div>;
 
 export default CoverLetterEditor;

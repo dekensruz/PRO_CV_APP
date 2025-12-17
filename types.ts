@@ -1,4 +1,11 @@
 
+export interface DesignSettings {
+  color: string;
+  font: 'sans' | 'serif' | 'mono';
+  fontSize: 'small' | 'medium' | 'large';
+  spacing: 'compact' | 'normal' | 'spacious';
+  borderRadius?: 'none' | 'medium' | 'full'; // New setting
+}
 
 export interface ResumeData {
   id?: string;
@@ -17,6 +24,7 @@ export interface ResumeData {
   education: EducationItem[];
   skills: string[];
   languages: string[];
+  design?: DesignSettings; // New design property
 }
 
 export interface ExperienceItem {
@@ -64,9 +72,10 @@ export interface CoverLetterData {
     text: string;
     imageUrl: string;
   };
+  design?: DesignSettings; // New design property
 }
 
-export type TemplateType = 'modern' | 'classic' | 'minimalist' | 'executive' | 'creative' | 'tech' | 'compact' | 'timeline' | 'leftborder' | 'glitch' | 'swiss' | 'double';
+export type TemplateType = 'modern' | 'classic' | 'minimalist' | 'executive' | 'creative' | 'tech' | 'compact' | 'timeline' | 'leftborder' | 'glitch' | 'swiss' | 'double' | 'neo' | 'bold' | 'symmetry' | 'elegant';
 
 export interface UserProfile {
   id: string;

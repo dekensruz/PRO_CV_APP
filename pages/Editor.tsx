@@ -4,16 +4,18 @@ import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { supabase } from '../services/supabaseClient';
 import { generateResumeFromJobDescription, generateCoverLetter } from '../services/geminiService';
 import { useAuth, useApp } from '../App';
-import { ResumeData, TemplateType } from '../types';
-import { INITIAL_RESUME_STATE, INITIAL_COVER_LETTER_STATE, TRANSLATIONS } from '../constants';
+import { ResumeData, TemplateType, DesignSettings } from '../types';
+import { INITIAL_RESUME_STATE, TRANSLATIONS, DEFAULT_DESIGN } from '../constants';
 import ResumePreview from '../components/ResumePreview';
 import { 
-  Save, ArrowLeft, Wand2, Download, Eye, Layout, Plus, Trash, AlertTriangle, Mail, Loader2, Upload, Edit, CheckSquare, Square
+  Save, ArrowLeft, Wand2, Download, Eye, Layout, Plus, Trash, AlertTriangle, Mail, Loader2, Upload, Edit, CheckSquare, Palette, Type, AlignJustify, Circle
 } from 'lucide-react';
-import { toJpeg } from 'html-to-image';
+import { toPng } from 'html-to-image';
 import jsPDF from 'jspdf';
 import { Packer, Document, Paragraph, TextRun, HeadingLevel, AlignmentType, BorderStyle, TabStopType, TabStopPosition } from 'docx';
 import saveAs from 'file-saver';
+
+const COLORS = ['#0ea5e9', '#2563eb', '#4f46e5', '#7c3aed', '#db2777', '#e11d48', '#ea580c', '#059669', '#0d9488', '#1f2937'];
 
 const Editor = () => {
   const { id } = useParams();
@@ -68,7 +70,6 @@ const Editor = () => {
     return () => observer.disconnect();
   }, [mobileView]);
 
-  // ... (Load, Save, Auth effects unchanged) ...
   useEffect(() => {
     if (location.state && location.state.template) {
       setTemplate(location.state.template);
@@ -118,12 +119,13 @@ const Editor = () => {
       if (user?.user_metadata?.full_name) {
           setResumeData(prev => ({
               ...prev,
-              personalInfo: { ...prev.personalInfo, fullName: user.user_metadata.full_name }
+              personalInfo: { ...prev.personalInfo, fullName: user.user_metadata.full_name },
+              design: DEFAULT_DESIGN
           }));
           setCandidateName(user.user_metadata.full_name);
       }
       lastSavedState.current = JSON.stringify({ 
-          data: { ...INITIAL_RESUME_STATE, personalInfo: { ...INITIAL_RESUME_STATE.personalInfo, fullName: user?.user_metadata?.full_name || '' }}, 
+          data: { ...INITIAL_RESUME_STATE, design: DEFAULT_DESIGN, personalInfo: { ...INITIAL_RESUME_STATE.personalInfo, fullName: user?.user_metadata?.full_name || '' }}, 
           title: 'Mon CV', 
           template: 'modern' 
       });
@@ -147,11 +149,11 @@ const Editor = () => {
     setLoading(true);
     const { data, error } = await supabase.from('resumes').select('*').eq('id', resumeId).single();
     if (data && !error) {
-      setResumeData(data.content);
+      setResumeData({...data.content, design: data.content.design || DEFAULT_DESIGN});
       setTitle(data.title);
       setTemplate(data.template_id as TemplateType);
       setCandidateName(data.content.personalInfo.fullName || '');
-      lastSavedState.current = JSON.stringify({ data: data.content, title: data.title, template: data.template_id });
+      lastSavedState.current = JSON.stringify({ data: {...data.content, design: data.content.design || DEFAULT_DESIGN}, title: data.title, template: data.template_id });
       setUnsavedChanges(false);
     }
     setLoading(false);
@@ -186,22 +188,18 @@ const Editor = () => {
 
   const handleCoverLetterClick = async () => {
       let currentResumeId = id;
-      // 1. Save Resume First to ensure it exists and we have an ID
       if (unsavedChanges || !id) {
           currentResumeId = await saveResume();
           if (!currentResumeId) return;
       }
 
       setCheckingLetter(true);
-      // 2. Check for ANY letter linked to this resume
       const { data: existingLetters } = await supabase.from('cover_letters').select('id').eq('resume_id', currentResumeId).limit(1);
       setCheckingLetter(false);
 
       if (existingLetters && existingLetters.length > 0) {
-          // 3. Navigate to existing letter
           navigate(`/cover-letter/${existingLetters[0].id}`);
       } else {
-          // 4. Create new if none exists
           const confirmCreate = window.confirm("Créer une lettre de motivation associée ?");
           if (confirmCreate && user) {
               const newLetterData = {
@@ -209,7 +207,8 @@ const Editor = () => {
                   personalInfo: { ...resumeData.personalInfo },
                   recipientInfo: { managerName: "Responsable du recrutement", company: "Entreprise", address: "" },
                   content: { subject: `Candidature: ${resumeData.personalInfo.jobTitle}`, opening: "Madame, Monsieur,", body: ["(Générez le contenu avec l'IA)"], closing: "Cordialement," },
-                  signature: { type: 'text', text: resumeData.personalInfo.fullName, imageUrl: '' }
+                  signature: { type: 'text', text: resumeData.personalInfo.fullName, imageUrl: '' },
+                  design: resumeData.design || DEFAULT_DESIGN
               };
               const { data: newLetter } = await supabase.from('cover_letters').insert({
                   user_id: user.id, title: `Lettre - ${resumeData.personalInfo.jobTitle}`, content: newLetterData, template_id: template, resume_id: currentResumeId
@@ -225,24 +224,22 @@ const Editor = () => {
     setAiStatus('Analyse de l\'offre et rédaction du CV...');
     
     try {
-      // 1. Generate Resume Data
       const newResume = await generateResumeFromJobDescription(jobDescription, candidateName, resumeData, language);
       
       if (newResume) {
-        // Merge with existing data
         const updatedResumeData = { 
             ...resumeData, 
             ...newResume, 
             personalInfo: { 
                 ...resumeData.personalInfo, 
                 ...newResume.personalInfo,
-                fullName: candidateName // Force name
-            } 
+                fullName: candidateName 
+            },
+            design: resumeData.design || DEFAULT_DESIGN 
         };
 
         setResumeData(updatedResumeData);
         
-        // 2. AUTOMATIC SAVE OF RESUME (Crucial for linking)
         let savedResumeId = id;
         if (user) {
             const payload = {
@@ -254,48 +251,41 @@ const Editor = () => {
             };
 
             if (id) {
-                // Update existing
                 await supabase.from('resumes').update(payload).eq('id', id);
             } else {
-                // Insert new
                 const { data: insertedResume } = await supabase.from('resumes').insert(payload).select().single();
                 if (insertedResume) {
                     savedResumeId = insertedResume.id;
-                    // Update URL quietly so we stay on page but have ID
                     navigate(`/editor/${insertedResume.id}`, { replace: true });
                 }
             }
         }
         
-        // 3. Generate and SAVE Cover Letter (if requested)
         if (includeCoverLetter && user && savedResumeId) {
             setAiStatus('Rédaction de la lettre de motivation...');
             
             const newLetter = await generateCoverLetter(jobDescription, updatedResumeData, language);
             
             if (newLetter) {
-                // Save immediately to DB with LINK to resume
                 const { data: savedLetter } = await supabase.from('cover_letters').insert({
                     user_id: user.id,
                     title: `Lettre - ${updatedResumeData.personalInfo.jobTitle || 'Nouvelle'}`,
-                    content: newLetter,
+                    content: { ...newLetter, design: updatedResumeData.design },
                     template_id: template,
-                    resume_id: savedResumeId // LINKED HERE
+                    resume_id: savedResumeId
                 }).select().single();
 
                 setShowAiModal(false);
                 setAiStatus('');
                 setAiLoading(false);
 
-                // Ask to go to letter
                 if (window.confirm("CV et Lettre de motivation générés et sauvegardés ! Ouvrir la lettre maintenant ?")) {
                     if (savedLetter) navigate(`/cover-letter/${savedLetter.id}`);
                 }
-                return; // Stop here if redirected
+                return; 
             }
         }
         
-        // Finalize if only resume
         setUnsavedChanges(false);
         lastSavedState.current = JSON.stringify({ data: updatedResumeData, title, template });
         setShowAiModal(false);
@@ -320,7 +310,7 @@ const Editor = () => {
   };
 
   // --- EXPORT PDF ROBUST FIX (CLONE & CAPTURE) ---
-  const exportPDF = async () => {
+  const exportPDF = async (forceOnePage = false) => {
     if (!previewRef.current) return;
     setLoading(true);
 
@@ -328,53 +318,49 @@ const Editor = () => {
         const element = previewRef.current;
         await document.fonts.ready;
 
-        // 1. CLONE
-        // We clone the node to isolate it from the scaled preview container.
         const clone = element.cloneNode(true) as HTMLElement;
-
-        // 2. SETUP CLONE STYLES
-        // Move it off-screen but ensure it's rendered in the DOM
-        const a4WidthPx = 794; // approx 210mm at 96dpi
+        const a4WidthPx = 794; 
         
+        // Remove the Page Break Marker from the clone
+        const pageMarker = clone.querySelector('.page-break-marker');
+        if (pageMarker) {
+            pageMarker.remove();
+        }
+
         clone.style.position = 'fixed';
-        clone.style.top = '0px'; // Changed from -10000px to avoid rendering optimization issues
+        clone.style.top = '0px'; 
         clone.style.left = '0px';
         clone.style.zIndex = '-9999';
         clone.style.width = `${a4WidthPx}px`;
         clone.style.height = 'auto'; 
-        clone.style.minHeight = '1123px'; // approx 297mm
-        clone.style.transform = 'none'; // Critical: Remove any scale
+        clone.style.minHeight = '1123px';
+        clone.style.transform = 'none'; 
         clone.style.margin = '0';
         clone.style.padding = '0'; 
-        clone.style.backgroundColor = '#ffffff'; // Force white background for JPEG
+        clone.style.backgroundColor = '#ffffff'; 
         
-        // 3. APPEND TO BODY
         document.body.appendChild(clone);
 
-        // 4. WAIT FOR IMAGES
-        // Ensure any images in the clone are loaded before capturing
         const images = Array.from(clone.getElementsByTagName('img'));
         await Promise.all(images.map(img => {
             if (img.complete) return Promise.resolve();
             return new Promise(resolve => {
                 img.onload = resolve;
-                img.onerror = resolve; // Continue even if image fails
+                img.onerror = resolve; 
             });
         }));
 
-        // Small delay to ensure layout is settled and styles applied
         await new Promise(resolve => setTimeout(resolve, 500));
 
-        // 5. CAPTURE AS JPEG (Smaller size, no transparency issues)
-        const dataUrl = await toJpeg(clone, {
-            quality: 0.8, // 80% quality is sufficient for documents and reduces file size significantly
-            pixelRatio: 2, // Retain high resolution for text crispness
+        // switched to toPng with higher pixelRatio for better quality text
+        const dataUrl = await toPng(clone, {
+            quality: 1.0,
+            pixelRatio: 3, // Increased for sharpness
             backgroundColor: '#ffffff',
             width: a4WidthPx,
-            height: clone.scrollHeight, // Capture full height of content
+            height: clone.scrollHeight,
             cacheBust: true,
             filter: (node) => {
-              // Ignore external stylesheets to prevent CORS errors
               if (node.tagName === 'LINK' && (node as HTMLLinkElement).href.includes('fonts.googleapis')) {
                 return false;
               }
@@ -382,14 +368,12 @@ const Editor = () => {
             },
         });
 
-        // 6. CLEANUP
         document.body.removeChild(clone);
         
         if (!dataUrl || dataUrl.length < 1000) {
             throw new Error("Generation failed - Image data too short.");
         }
 
-        // 7. GENERATE PDF
         const pdf = new jsPDF({
             orientation: 'portrait',
             unit: 'mm',
@@ -403,26 +387,28 @@ const Editor = () => {
         const imgProps = pdf.getImageProperties(dataUrl);
         const imgHeight = (imgProps.height * pdfWidth) / imgProps.width;
 
-        // Use 'FAST' compression for addImage
-        // Single page
-        if (imgHeight <= pdfHeight + 5) {
-             pdf.addImage(dataUrl, 'JPEG', 0, 0, pdfWidth, imgHeight, undefined, 'FAST'); 
+        // Auto-Fit logic: If selected, force image into one page
+        if (forceOnePage) {
+            pdf.addImage(dataUrl, 'PNG', 0, 0, pdfWidth, Math.min(imgHeight, pdfHeight), undefined, 'FAST');
         } else {
-             // Multi-page splitting
-             let heightLeft = imgHeight;
-             let position = 0;
-             let page = 0;
-             
-             pdf.addImage(dataUrl, 'JPEG', 0, position, pdfWidth, imgHeight, undefined, 'FAST');
-             heightLeft -= pdfHeight;
+             if (imgHeight <= pdfHeight + 5) {
+                 pdf.addImage(dataUrl, 'PNG', 0, 0, pdfWidth, imgHeight, undefined, 'FAST'); 
+            } else {
+                 let heightLeft = imgHeight;
+                 let position = 0;
+                 let page = 0;
+                 
+                 pdf.addImage(dataUrl, 'PNG', 0, position, pdfWidth, imgHeight, undefined, 'FAST');
+                 heightLeft -= pdfHeight;
 
-             while (heightLeft > 0) {
-                page++;
-                position = - (page * pdfHeight); // Move image up
-                pdf.addPage();
-                pdf.addImage(dataUrl, 'JPEG', 0, position, pdfWidth, imgHeight, undefined, 'FAST');
-                heightLeft -= pdfHeight;
-             }
+                 while (heightLeft > 0) {
+                    page++;
+                    position = - (page * pdfHeight); 
+                    pdf.addPage();
+                    pdf.addImage(dataUrl, 'PNG', 0, position, pdfWidth, imgHeight, undefined, 'FAST');
+                    heightLeft -= pdfHeight;
+                 }
+            }
         }
 
         pdf.save(`${title.replace(/\s+/g, '_')}.pdf`);
@@ -436,26 +422,9 @@ const Editor = () => {
 
   const exportDOCX = async () => {
     const doc = new Document({
-      styles: {
-        paragraphStyles: [
-            {
-                id: "Heading1",
-                name: "Heading 1",
-                run: { font: "Calibri", size: 28, bold: true, color: "2E74B5" },
-                paragraph: { spacing: { before: 240, after: 120 } },
-            },
-            {
-                id: "Heading2",
-                name: "Heading 2",
-                run: { font: "Calibri", size: 24, bold: true },
-                paragraph: { spacing: { before: 200, after: 100 } },
-            }
-        ]
-      },
       sections: [{
         properties: {},
         children: [
-           // Header: Name and Title
            new Paragraph({ 
                text: resumeData.personalInfo.fullName.toUpperCase(), 
                heading: HeadingLevel.TITLE, 
@@ -468,8 +437,6 @@ const Editor = () => {
                run: { size: 24, bold: true, color: "555555" },
                spacing: { after: 200 }
            }),
-           
-           // Contact Info (One line with separators)
            new Paragraph({ 
                alignment: AlignmentType.CENTER,
                children: [
@@ -481,8 +448,6 @@ const Editor = () => {
                ],
                spacing: { after: 400 }
            }),
-
-           // Profile Summary
            ...(resumeData.personalInfo.summary ? [
                 new Paragraph({ 
                     text: "PROFIL PROFESSIONNEL", 
@@ -495,8 +460,6 @@ const Editor = () => {
                     spacing: { after: 300 }
                 })
            ] : []),
-
-           // Experience Section
            new Paragraph({ 
                text: "EXPÉRIENCE PROFESSIONNELLE", 
                heading: HeadingLevel.HEADING_1, 
@@ -526,8 +489,6 @@ const Editor = () => {
                    spacing: { after: 300 }
                }),
            ]),
-
-           // Education Section
            new Paragraph({ 
                text: "FORMATION", 
                heading: HeadingLevel.HEADING_1, 
@@ -551,8 +512,6 @@ const Editor = () => {
                    spacing: { after: 300 }
                }),
            ]),
-
-           // Skills Section
            new Paragraph({ 
                text: "COMPÉTENCES", 
                heading: HeadingLevel.HEADING_1, 
@@ -575,6 +534,7 @@ const Editor = () => {
   const addExperience = () => setResumeData(p => ({...p, experience: [...p.experience, { id: crypto.randomUUID(), company: '', position: '', startDate: '', endDate: '', current: false, description: '' }]}));
   const updateEducation = (i: number, f: string, v: any) => { const n = [...resumeData.education]; n[i] = {...n[i], [f]: v}; setResumeData(p => ({...p, education: n})); };
   const addEducation = () => setResumeData(p => ({...p, education: [...p.education, { id: crypto.randomUUID(), institution: '', degree: '', field: '', startDate: '', endDate: '', current: false }]}));
+  const updateDesign = (f: keyof DesignSettings, v: string) => setResumeData(p => ({...p, design: {...(p.design || DEFAULT_DESIGN), [f]: v}}));
   const goBack = () => unsavedChanges && !window.confirm("Modifications non sauvegardées. Quitter ?") ? null : navigate('/dashboard');
 
   return (
@@ -594,7 +554,15 @@ const Editor = () => {
           <button onClick={() => setShowAiModal(true)} className="flex items-center gap-2 px-2 md:px-3 py-1.5 bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300 rounded-lg text-xs md:text-sm font-medium hover:bg-indigo-200"><Wand2 className="w-4 h-4"/><span className="hidden md:inline">{t.buttons.generateAI}</span></button>
           <div className="h-6 w-px bg-slate-300 dark:bg-slate-600 mx-1"></div>
           <button onClick={exportDOCX} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg text-blue-600 font-bold text-xs border border-current">W</button>
-          <button onClick={exportPDF} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg text-red-600">{loading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Download className="w-5 h-5" />}</button>
+          <button onClick={() => {
+              if (window.confirm("Voulez-vous adapter le contenu à une seule page ? (Auto-Fit)")) {
+                  exportPDF(true);
+              } else {
+                  exportPDF(false);
+              }
+          }} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg text-red-600" title="Export PDF (Click for Auto-Fit option)">
+              {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Download className="w-5 h-5" />}
+          </button>
           <button onClick={saveResume} disabled={loading} className={`flex items-center gap-2 px-3 md:px-4 py-2 rounded-lg text-xs md:text-sm font-medium ml-1 shadow-sm transition-all ${unsavedChanges ? 'bg-amber-600 text-white' : 'bg-primary-600 text-white'}`}><Save className="w-4 h-4" /><span className="hidden md:inline">{t.buttons.save}</span></button>
         </div>
       </div>
@@ -603,7 +571,7 @@ const Editor = () => {
         {/* Editor Column */}
         <div className={`w-full md:w-5/12 lg:w-5/12 overflow-y-auto p-4 border-r border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 h-full ${mobileView === 'preview' ? 'hidden md:block' : 'block'}`}>
              <div className="flex space-x-1 mb-6 bg-slate-100 dark:bg-slate-900/50 p-1 rounded-lg overflow-x-auto no-scrollbar">
-                {['personal', 'experience', 'education', 'skills'].map(tab => (
+                {['personal', 'experience', 'education', 'skills', 'design'].map(tab => (
                     <button key={tab} onClick={() => setActiveTab(tab)} className={`px-3 md:px-4 py-2 rounded-md text-sm font-medium whitespace-nowrap transition-all flex-shrink-0 ${activeTab === tab ? 'bg-white dark:bg-slate-800 shadow text-primary-600' : 'text-slate-500 hover:text-slate-700'}`}>{t.tabs[tab as keyof typeof t.tabs]}</button>
                 ))}
             </div>
@@ -664,6 +632,83 @@ const Editor = () => {
                      <TextAreaField label="Compétences (séparées par des virgules)" value={resumeData.skills.join(', ')} onChange={v => setResumeData(p => ({...p, skills: v.split(',').map(s => s.trim())}))} />
                  </div>
              )}
+             {activeTab === 'design' && (
+                <div className="space-y-8 pb-20 md:pb-0">
+                    <div>
+                        <label className="flex items-center gap-2 text-sm font-bold text-slate-700 dark:text-slate-300 mb-3"><Palette className="w-4 h-4"/> Couleur Principale</label>
+                        <div className="flex flex-wrap gap-2">
+                            {COLORS.map(c => (
+                                <button 
+                                    key={c} 
+                                    onClick={() => updateDesign('color', c)} 
+                                    className={`w-8 h-8 rounded-full border-2 transition-transform hover:scale-110 ${resumeData.design?.color === c ? 'border-slate-900 dark:border-white scale-110' : 'border-transparent'}`}
+                                    style={{ backgroundColor: c }}
+                                />
+                            ))}
+                        </div>
+                    </div>
+                    
+                    <div>
+                        <label className="flex items-center gap-2 text-sm font-bold text-slate-700 dark:text-slate-300 mb-3"><Type className="w-4 h-4"/> Police</label>
+                        <div className="grid grid-cols-3 gap-2">
+                            {['sans', 'serif', 'mono'].map(f => (
+                                <button 
+                                    key={f}
+                                    onClick={() => updateDesign('font', f)}
+                                    className={`py-2 px-3 border rounded-lg text-sm capitalize ${resumeData.design?.font === f ? 'bg-primary-100 border-primary-500 text-primary-700' : 'border-slate-200 dark:border-slate-700'}`}
+                                >
+                                    {f}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+
+                    <div>
+                        <label className="flex items-center gap-2 text-sm font-bold text-slate-700 dark:text-slate-300 mb-3"><Circle className="w-4 h-4"/> Formes</label>
+                        <div className="grid grid-cols-3 gap-2">
+                             {['none', 'medium', 'full'].map(r => (
+                                <button 
+                                    key={r}
+                                    onClick={() => updateDesign('borderRadius', r)}
+                                    className={`py-2 px-3 border rounded-lg text-sm capitalize ${resumeData.design?.borderRadius === r ? 'bg-primary-100 border-primary-500 text-primary-700' : 'border-slate-200 dark:border-slate-700'}`}
+                                >
+                                    {r === 'none' ? 'Carré' : r === 'medium' ? 'Arrondi' : 'Rond'}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+
+                    <div>
+                        <label className="flex items-center gap-2 text-sm font-bold text-slate-700 dark:text-slate-300 mb-3"><AlignJustify className="w-4 h-4"/> Espacement</label>
+                        <div className="grid grid-cols-3 gap-2">
+                             {['compact', 'normal', 'spacious'].map(s => (
+                                <button 
+                                    key={s}
+                                    onClick={() => updateDesign('spacing', s)}
+                                    className={`py-2 px-3 border rounded-lg text-sm capitalize ${resumeData.design?.spacing === s ? 'bg-primary-100 border-primary-500 text-primary-700' : 'border-slate-200 dark:border-slate-700'}`}
+                                >
+                                    {s}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+
+                    <div>
+                        <label className="flex items-center gap-2 text-sm font-bold text-slate-700 dark:text-slate-300 mb-3">Taille du Texte</label>
+                         <div className="grid grid-cols-3 gap-2">
+                             {['small', 'medium', 'large'].map(s => (
+                                <button 
+                                    key={s}
+                                    onClick={() => updateDesign('fontSize', s)}
+                                    className={`py-2 px-3 border rounded-lg text-sm capitalize ${resumeData.design?.fontSize === s ? 'bg-primary-100 border-primary-500 text-primary-700' : 'border-slate-200 dark:border-slate-700'}`}
+                                >
+                                    {s}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+                </div>
+             )}
         </div>
 
         {/* Preview Column */}
@@ -683,7 +728,11 @@ const Editor = () => {
                         minHeight: '1123px'
                     }}
                  >
-                    <div ref={previewRef} className="w-full h-full">
+                    <div ref={previewRef} className="w-full h-full relative">
+                        {/* Page Break Indicator for Visual Feedback */}
+                        <div className="absolute top-[1123px] left-0 w-full border-b-2 border-dashed border-red-500 z-50 pointer-events-none opacity-50 flex items-end justify-end page-break-marker">
+                            <span className="bg-red-500 text-white text-xs px-2 py-0.5 rounded-t">Fin de Page A4 (Ne sera pas imprimé)</span>
+                        </div>
                         <ResumePreview data={resumeData} template={template} />
                     </div>
                  </div>
@@ -756,8 +805,8 @@ const Editor = () => {
            <div className="bg-white dark:bg-slate-800 p-6 rounded-xl w-full max-w-4xl h-[80vh] flex flex-col">
                <div className="flex justify-between mb-4"><h3 className="text-xl font-bold">Modèles</h3><button onClick={() => setShowTemplateModal(false)}>X</button></div>
                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 overflow-y-auto">
-                   {['modern', 'classic', 'minimalist', 'executive', 'creative', 'tech', 'glitch', 'swiss'].map(t => (
-                       <button key={t} onClick={() => { setTemplate(t as TemplateType); setShowTemplateModal(false); }} className={`p-4 border rounded ${template === t ? 'border-primary-500 bg-primary-50' : ''}`}>{t}</button>
+                   {['modern', 'classic', 'minimalist', 'executive', 'creative', 'tech', 'glitch', 'swiss', 'neo', 'bold', 'symmetry', 'elegant'].map(t => (
+                       <button key={t} onClick={() => { setTemplate(t as TemplateType); setShowTemplateModal(false); }} className={`p-4 border rounded ${template === t ? 'border-primary-500 bg-primary-50' : ''} uppercase font-bold text-xs`}>{t}</button>
                    ))}
                </div>
            </div>

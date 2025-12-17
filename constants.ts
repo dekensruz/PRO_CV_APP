@@ -4,6 +4,14 @@ import { ResumeData, CoverLetterData } from './types';
 export const SUPABASE_URL = 'https://ygracycqoceujphospbq.supabase.co';
 export const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlncmFjeWNxb2NldWpwaG9zcGJxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjQ0ODc5NzcsImV4cCI6MjA4MDA2Mzk3N30.XRxi2X1UvY5EC-uBKK6-dGvNlwVaNCRWWkbCZvi3yqM';
 
+export const DEFAULT_DESIGN = {
+  color: '#0ea5e9', // Default primary-500
+  font: 'sans' as const,
+  fontSize: 'medium' as const,
+  spacing: 'normal' as const,
+  borderRadius: 'medium' as const
+};
+
 export const INITIAL_RESUME_STATE: ResumeData = {
   personalInfo: {
     fullName: '',
@@ -19,7 +27,8 @@ export const INITIAL_RESUME_STATE: ResumeData = {
   experience: [],
   education: [],
   skills: [],
-  languages: []
+  languages: [],
+  design: DEFAULT_DESIGN
 };
 
 export const INITIAL_COVER_LETTER_STATE: CoverLetterData = {
@@ -44,7 +53,8 @@ export const INITIAL_COVER_LETTER_STATE: CoverLetterData = {
     type: 'text',
     text: '',
     imageUrl: ''
-  }
+  },
+  design: DEFAULT_DESIGN
 };
 
 export const TRANSLATIONS = {
@@ -139,6 +149,7 @@ export const TRANSLATIONS = {
         experience: 'Expérience',
         education: 'Éducation',
         skills: 'Compétences',
+        design: 'Design',
         preview: 'Aperçu'
       },
       buttons: {
@@ -267,6 +278,7 @@ export const TRANSLATIONS = {
         experience: 'Experience',
         education: 'Education',
         skills: 'Skills',
+        design: 'Design',
         preview: 'Preview'
       },
       buttons: {
