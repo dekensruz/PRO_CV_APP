@@ -1,22 +1,16 @@
-
 import { GoogleGenAI, Type } from "@google/genai";
 import { ResumeData, CoverLetterData } from "../types";
 
 // Helper to safely get the API key
 const getApiKey = () => {
-  // 1. Check Vite Environment Variable (Recommended for Vercel)
+  if (typeof process !== 'undefined' && process.env && process.env.API_KEY) {
+    return process.env.API_KEY;
+  }
   // @ts-ignore
   if (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_API_KEY) {
     // @ts-ignore
     return import.meta.env.VITE_API_KEY;
   }
-  
-  // 2. Check standard process.env (mapped in vite.config.ts)
-  if (typeof process !== 'undefined' && process.env) {
-    if (process.env.API_KEY) return process.env.API_KEY;
-    if (process.env.VITE_API_KEY) return process.env.VITE_API_KEY;
-  }
-
   return '';
 };
 
@@ -29,19 +23,16 @@ export const generateResumeFromJobDescription = async (
   try {
     const apiKey = getApiKey();
     if (!apiKey) {
-      console.error("API Key is missing. Please check your environment variables (VITE_API_KEY or API_KEY).");
-      alert("Clé API manquante. Sur Vercel, ajoutez la variable d'environnement 'VITE_API_KEY'.");
+      alert("Clé API manquante. Veuillez configurer API_KEY.");
       return null;
     }
 
-    // Initialize AI instance here, not globally, to prevent load-time crashes
     const ai = new GoogleGenAI({ apiKey: apiKey });
-    const modelId = "gemini-2.5-flash";
+    // Utilisation de Gemini 3 Pro pour des tâches de rédaction complexes
+    const modelId = "gemini-3-pro-preview";
     
-    // Check if the current resume is effectively empty (just initialized)
     const isResumeEmpty = !currentResume || (currentResume.experience.length === 0 && currentResume.education.length === 0 && !currentResume.personalInfo.summary);
 
-    // Construct prompt
     const prompt = `
       You are an expert CV writer. 
       Language required: ${language === 'fr' ? 'French' : 'English'}.
@@ -129,7 +120,6 @@ export const generateResumeFromJobDescription = async (
 
     if (response.text) {
       let cleanText = response.text.trim();
-      // Remove Markdown code blocks if present
       if (cleanText.startsWith('```json')) {
         cleanText = cleanText.replace(/^```json\s*/, '').replace(/\s*```$/, '');
       } else if (cleanText.startsWith('```')) {
@@ -137,18 +127,14 @@ export const generateResumeFromJobDescription = async (
       }
 
       const data = JSON.parse(cleanText);
-
-      // Defensive coding: Ensure arrays exist
       data.experience = Array.isArray(data.experience) ? data.experience : [];
       data.education = Array.isArray(data.education) ? data.education : [];
       data.skills = Array.isArray(data.skills) ? data.skills : [];
       data.languages = Array.isArray(data.languages) ? data.languages : [];
       
-      // Ensure IDs exist
       data.experience = data.experience.map((e: any) => ({ ...e, id: e.id || crypto.randomUUID() }));
       data.education = data.education.map((e: any) => ({ ...e, id: e.id || crypto.randomUUID() }));
       
-      // Preserve original personal info if it was provided and AI returned partial data
       if (!isResumeEmpty && currentResume) {
           if (!data.personalInfo.email && currentResume.personalInfo.email) data.personalInfo.email = currentResume.personalInfo.email;
           if (!data.personalInfo.phone && currentResume.personalInfo.phone) data.personalInfo.phone = currentResume.personalInfo.phone;
@@ -157,9 +143,7 @@ export const generateResumeFromJobDescription = async (
 
       return data as ResumeData;
     }
-    
     return null;
-
   } catch (error) {
     console.error("Gemini Generation Error:", error);
     throw error;
@@ -176,10 +160,7 @@ export const generateCoverLetter = async (
     if (!apiKey) return null;
 
     const ai = new GoogleGenAI({ apiKey: apiKey });
-    const modelId = "gemini-2.5-flash";
-
-    // Determine if resume is empty to adjust prompt
-    const isResumeSparse = !resumeData.experience || resumeData.experience.length === 0;
+    const modelId = "gemini-3-pro-preview";
 
     const prompt = `
       You are an expert career coach.
@@ -192,19 +173,15 @@ export const generateCoverLetter = async (
       
       Candidate Info:
       Name: ${resumeData.personalInfo.fullName}
-      Current Title: ${resumeData.personalInfo.jobTitle}
-      Resume Data: ${JSON.stringify(resumeData)}
+      Resume Summary: ${resumeData.personalInfo.summary}
+      Resume Data (JSON): ${JSON.stringify({ experience: resumeData.experience, skills: resumeData.skills })}
 
       Instructions:
       1. Extract the company name from the job description if possible.
       2. Write a compelling opening, body paragraphs highlighting fit, and a professional closing.
       3. The body should have 2-3 paragraphs.
-      
-      ${isResumeSparse 
-        ? "NOTE: The user's resume data is minimal. Focus heavily on the Job Description requirements. Invent professional but generic placeholders for experience if needed (e.g., '[Your relevant experience in field...]') or write in a way that emphasizes soft skills and potential." 
-        : "Use the candidate's specific experience from the resume to prove they are a good fit."}
-
-      4. Return strict JSON.
+      4. Avoid generic fluff; use the specific skills and experiences provided in the resume.
+      5. Return strict JSON.
     `;
 
     const response = await ai.models.generateContent({
@@ -218,9 +195,9 @@ export const generateCoverLetter = async (
             recipientInfo: {
               type: Type.OBJECT,
               properties: {
-                 managerName: { type: Type.STRING, description: "Name of hiring manager if found, else 'Hiring Manager' or 'Responsable du recrutement'" },
-                 company: { type: Type.STRING, description: "Company name from job description" },
-                 address: { type: Type.STRING, description: "Company address if found, else empty" }
+                 managerName: { type: Type.STRING },
+                 company: { type: Type.STRING },
+                 address: { type: Type.STRING }
               }
             },
             content: {
@@ -239,7 +216,6 @@ export const generateCoverLetter = async (
 
     if (response.text) {
       const data = JSON.parse(response.text);
-      
       return {
         personalInfo: {
            fullName: resumeData.personalInfo.fullName,
@@ -256,7 +232,6 @@ export const generateCoverLetter = async (
         }
       } as CoverLetterData;
     }
-
     return null;
   } catch (error) {
     console.error("Cover Letter Generation Error:", error);

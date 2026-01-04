@@ -58,8 +58,7 @@ const Editor = () => {
     const handleResize = () => {
       if (containerRef.current) {
         const containerWidth = containerRef.current.offsetWidth;
-        // 210mm is approx 794px at 96 DPI.
-        const targetWidth = 840; // A4 + some padding
+        const targetWidth = 840; 
         const newScale = Math.min((containerWidth - 32) / targetWidth, 1);
         setPreviewScale(newScale > 0 ? newScale : 0.5);
       }
@@ -309,7 +308,6 @@ const Editor = () => {
     }
   };
 
-  // --- EXPORT PDF ROBUST FIX (CLONE & CAPTURE) ---
   const exportPDF = async (forceOnePage = false) => {
     if (!previewRef.current) return;
     setLoading(true);
@@ -321,11 +319,9 @@ const Editor = () => {
         const clone = element.cloneNode(true) as HTMLElement;
         const a4WidthPx = 794; 
         
-        // Remove the Page Break Marker from the clone
-        const pageMarker = clone.querySelector('.page-break-marker');
-        if (pageMarker) {
-            pageMarker.remove();
-        }
+        // Remove ALL Page Break Markers from the clone
+        const pageMarkers = clone.querySelectorAll('.page-break-marker');
+        pageMarkers.forEach(marker => marker.remove());
 
         clone.style.position = 'fixed';
         clone.style.top = '0px'; 
@@ -352,10 +348,9 @@ const Editor = () => {
 
         await new Promise(resolve => setTimeout(resolve, 500));
 
-        // switched to toPng with higher pixelRatio for better quality text
         const dataUrl = await toPng(clone, {
             quality: 1.0,
-            pixelRatio: 3, // Increased for sharpness
+            pixelRatio: 3, 
             backgroundColor: '#ffffff',
             width: a4WidthPx,
             height: clone.scrollHeight,
@@ -387,7 +382,6 @@ const Editor = () => {
         const imgProps = pdf.getImageProperties(dataUrl);
         const imgHeight = (imgProps.height * pdfWidth) / imgProps.width;
 
-        // Auto-Fit logic: If selected, force image into one page
         if (forceOnePage) {
             pdf.addImage(dataUrl, 'PNG', 0, 0, pdfWidth, Math.min(imgHeight, pdfHeight), undefined, 'FAST');
         } else {
@@ -568,14 +562,12 @@ const Editor = () => {
       </div>
 
       <div className="flex flex-1 overflow-hidden relative">
-        {/* Editor Column */}
         <div className={`w-full md:w-5/12 lg:w-5/12 overflow-y-auto p-4 border-r border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 h-full ${mobileView === 'preview' ? 'hidden md:block' : 'block'}`}>
              <div className="flex space-x-1 mb-6 bg-slate-100 dark:bg-slate-900/50 p-1 rounded-lg overflow-x-auto no-scrollbar">
                 {['personal', 'experience', 'education', 'skills', 'design'].map(tab => (
                     <button key={tab} onClick={() => setActiveTab(tab)} className={`px-3 md:px-4 py-2 rounded-md text-sm font-medium whitespace-nowrap transition-all flex-shrink-0 ${activeTab === tab ? 'bg-white dark:bg-slate-800 shadow text-primary-600' : 'text-slate-500 hover:text-slate-700'}`}>{t.tabs[tab as keyof typeof t.tabs]}</button>
                 ))}
             </div>
-            {/* Form Inputs */}
             {activeTab === 'personal' && (
                 <div className="space-y-4 pb-20 md:pb-0">
                     <InputField label={t.labels.fullName} value={resumeData.personalInfo.fullName} onChange={v => updatePersonalInfo('fullName', v)} />
@@ -711,7 +703,6 @@ const Editor = () => {
              )}
         </div>
 
-        {/* Preview Column */}
         <div ref={containerRef} className={`w-full md:w-7/12 lg:w-7/12 bg-slate-200 dark:bg-slate-950 overflow-y-auto relative flex flex-col items-center py-8 ${mobileView === 'editor' ? 'hidden md:flex' : 'flex'}`}>
              <div 
                 style={{ 
@@ -729,7 +720,6 @@ const Editor = () => {
                     }}
                  >
                     <div ref={previewRef} className="w-full h-full relative">
-                        {/* Page Break Indicator for Visual Feedback */}
                         <div className="absolute top-[1123px] left-0 w-full border-b-2 border-dashed border-red-500 z-50 pointer-events-none opacity-50 flex items-end justify-end page-break-marker">
                             <span className="bg-red-500 text-white text-xs px-2 py-0.5 rounded-t">Fin de Page A4 (Ne sera pas imprimé)</span>
                         </div>

@@ -1,82 +1,47 @@
-# ProCV - Générateur de CV Intelligent par IA
+# ProCV - Générateur de CV & Lettres de Motivation par IA
 
-Une application web complète pour créer, générer et gérer des CVs professionnels, alimentée par l'intelligence artificielle de Google Gemini et le backend Supabase.
+Une solution professionnelle complète pour propulser votre carrière, alliant la puissance de l'IA **Google Gemini 3** et un moteur de rendu haute fidélité.
 
-## 🚀 Fonctionnalités Principales
+## 🚀 Fonctionnalités Majeures
 
-### 🧠 Intelligence Artificielle (Gemini 2.5)
-- **Génération Contextuelle** : Crée un CV complet à partir d'une simple description de poste.
-- **Optimisation** : Adapte votre expérience existante aux mots-clés de l'offre.
-- **Mode Bilingue** : Génération en Français ou Anglais.
+### 🧠 Intelligence Artificielle Avancée (Gemini 3 Pro)
+- **Génération Contextuelle** : Créez un CV et une lettre de motivation parfaitement synchronisés à partir d'une simple offre d'emploi.
+- **Rédaction Stratégique** : L'IA ne se contente pas de copier, elle analyse les mots-clés de l'offre pour valoriser vos expériences.
+- **Sauvegarde Automatique & Liaison** : Dès qu'un CV est généré, il est sauvegardé et lié à sa lettre de motivation pour une gestion simplifiée.
 
-### 🎨 Éditeur & Design
-- **12+ Modèles Exclusifs** : 
-  - *Classiques* : Modern, Classic, Minimalist.
-  - *Pro* : Executive, Compact, Timeline.
-  - *Créatifs* : Creative, Left Border, Double.
-  - *Spéciaux* : Tech (Style code), Glitch (Cyberpunk), Swiss (Typographie suisse).
-- **Éditeur Responsive** : 
-  - **Desktop** : Vue partagée (Éditeur à gauche, Aperçu à droite).
-  - **Mobile** : Système d'onglets intelligent avec bouton flottant pour basculer entre édition et aperçu.
-- **Upload Photo** : Gestion d'image de profil intégrée avec stockage Cloud.
+### 🎨 Design & Personnalisation (16 Modèles)
+Une bibliothèque de modèles exclusifs adaptés à tous les secteurs :
+- **Classiques** : Modern, Classic, Minimalist, Executive.
+- **Créatifs** : Creative, Left Border, Double, Elegant.
+- **Techniques** : Tech (style code), Glitch (Cyberpunk), Swiss (Design suisse).
+- **Nouveautés** : 
+  - **Neo** : Style brutaliste à fort contraste.
+  - **Bold** : Typographie massive pour un impact maximum.
+  - **Symmetry** : Équilibre parfait et centré.
+  - **Elegant** : Raffinement et clarté.
+- **Personnalisation Totale** : Choix des couleurs, polices et désormais des **Formes** (Carré, Arrondi, Rond).
 
-### 💾 Gestion des Données
-- **Sauvegarde Automatique** : Système hybride (Local Storage + Base de données) pour ne jamais perdre vos modifications.
-- **Export PDF Pro** : Moteur de rendu optimisé (A4 strict, haute résolution, pas de coupure de texte).
-- **Export Word** : Génération de fichiers `.docx` éditables.
-- **Tableau de Bord** : Gestion de multiples versions de CV.
+### 📄 Export Haute Définition (HD)
+- **Rendu Vectoriel simulé** : Utilisation du format PNG haute résolution (300+ DPI) pour un texte d'une netteté parfaite, éliminant tout flou.
+- **Auto-Fit 1 Page** : Option pour ajuster intelligemment le contenu sur une seule page A4 sans déformation.
+- **Nettoyage Automatique** : Les guides visuels (marqueurs de fin de page) sont automatiquement supprimés lors de l'export.
 
-### 🔐 Authentification & Social
-- Connexion Email/Mot de passe sécurisée.
-- Profil utilisateur personnalisable.
-- Système d'avis clients avec notation et upload d'avatar.
+### 💾 Infrastructure Robuste
+- **Backend Supabase** : Authentification sécurisée et base de données temps réel.
+- **Stockage Cloud** : Vos photos et signatures sont hébergées de manière sécurisée.
+- **Mode Brouillon** : Récupération automatique de votre travail en cas de fermeture accidentelle.
 
-## 🛠 Tech Stack
+## 🛠 Installation
 
-- **Frontend** : React 19, TypeScript, Tailwind CSS.
-- **Animations** : Framer Motion.
-- **Backend** : Supabase (Auth, Database, Storage, Realtime).
-- **AI** : Google GenAI SDK.
-- **Outils** : Vite, Lucide React, html2canvas, jsPDF, docx.
+### 1. Base de données
+Exécutez le script `database.txt` dans l'éditeur SQL de votre projet [Supabase](https://supabase.com).
 
-## ⚙️ Guide d'Installation
-
-### 1. Configuration Supabase
-
-L'application nécessite une base de données PostgreSQL hébergée sur Supabase.
-
-1. Créez un projet sur [Supabase](https://supabase.com).
-2. Allez dans la section **SQL Editor**.
-3. Copiez l'intégralité du contenu du fichier `database.txt` fourni dans ce projet.
-4. Exécutez le script. Cela va :
-   - Créer les tables (`profiles`, `resumes`, `reviews`).
-   - Configurer la sécurité (RLS Policies).
-   - Créer les Triggers pour la mise à jour automatique des dates (`updated_at`).
-   - Créer le Bucket de stockage `public-files` pour les images.
-
-### 2. Variables d'Environnement
-
-Pour que l'IA fonctionne, vous devez configurer la clé API Google Gemini.
-
-**En Local (.env) :**
+### 2. Configuration API
+Ajoutez votre clé Gemini dans vos variables d'environnement :
 ```bash
-API_KEY=votre_cle_api_gemini
+API_KEY=votre_cle_gemini_3
 ```
 
-**Sur Vercel (Production) :**
-Allez dans **Settings > Environment Variables** et ajoutez :
-- **Name**: `API_KEY`
-- **Value**: `votre_cle_api_gemini_ici`
-
-> **Note** : Les URLs et Clés Supabase sont actuellement définies dans `constants.ts` pour la démonstration. Pour une production stricte, déplacez-les également dans les variables d'environnement.
-
-## 🐛 Dépannage Courant
-
-- **Page Blanche sur Vercel** : L'application inclut un polyfill (`window.process`) dans `index.html` pour éviter les crashs si les variables d'environnement ne sont pas accessibles immédiatement.
-- **Modifications perdues** : Assurez-vous d'avoir exécuté la partie du script SQL concernant les `Triggers` (`handle_updated_at`).
-- **Export PDF décalé** : L'export utilise un conteneur isolé. Si vous avez des soucis, vérifiez que vous n'utilisez pas d'extensions de navigateur qui modifient le CSS (Dark Reader, etc.).
-
 ## 👤 Auteur
-
-Développé par **Dekens Ruzuba**.
-[Voir le Portfolio](http://portfoliodek.netlify.app/)
+Développé avec passion par **Dekens Ruzuba**.
+[Portfolio](http://portfoliodek.netlify.app/)
