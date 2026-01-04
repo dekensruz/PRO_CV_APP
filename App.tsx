@@ -1,6 +1,6 @@
 
 import React, { createContext, useContext, useEffect, useState, ReactNode } from 'react';
-import { HashRouter, Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { supabase } from './services/supabaseClient';
 import { User } from '@supabase/supabase-js';
 import { Language } from './types';
@@ -149,9 +149,6 @@ const AppContent = () => {
   const { user, loading } = useAuth();
   const isEditor = location.pathname.includes('/editor') || location.pathname.includes('/cover-letter');
 
-  // MODIFICATION: Suppression de la redirection automatique pour permettre l'accès à la Landing Page
-  // L'utilisateur peut maintenant naviguer vers "/" même connecté.
-
   return (
     <div className="min-h-screen flex flex-col">
       {!isEditor && <Navbar />}
@@ -190,13 +187,13 @@ const AppContent = () => {
 
 const App = () => {
   return (
-    <HashRouter>
+    <BrowserRouter>
       <AppProvider>
         <AuthProvider>
           <AppContent />
         </AuthProvider>
       </AppProvider>
-    </HashRouter>
+    </BrowserRouter>
   );
 };
 
